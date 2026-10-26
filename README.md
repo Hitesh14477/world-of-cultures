@@ -61,5 +61,44 @@ The health endpoint returns the API status and MongoDB status. Its HTTP status i
 - `backend/index.js` — ES Module server entry point, middleware, and health route.
 - `backend/src/config/database.js` — Mongoose connection setup with safe connection logging.
 - `backend/src/middleware/errorHandler.js` — JSON responses for unknown routes and server errors.
+- `backend/src/models/Country.js` — country identifiers, directory facts, and structured placeholders for sourced cultural content.
+- `backend/src/controllers/countryController.js` and `backend/src/routes/countryRoutes.js` — read-only country directory API.
+- `backend/src/services/countryImport.js` and `backend/src/scripts/importCountries.js` — explicit, repeatable country data import; it never runs on server startup.
+- `backend/tests/` — model, import-safety, and API tests using Node's built-in test runner.
 - `backend/.env.example` — safe backend environment template; copy to `.env` only if a local file does not already exist.
 - `package.json` — root commands for starting both apps or either app separately.
+
+## Stage 2 country data
+
+The Country model stores ISO identifiers, names, geography, demographics, flags, languages, currencies, time zones, and structured cultural sections with source metadata. Cultural sections start empty so later researched content can be added without the import overwriting it.
+
+The optional import script targets the 193 United Nations member states and the two non-member observer states identified by ISO codes `VA` and `PS`. It validates the complete scope and all normalized records before connecting and writing; it never deletes records. Re-running it updates changed source facts by ISO code, preserves existing slugs and cultural content, and skips unchanged records. It does not run automatically.
+
+The remote source is REST Countries API v5. That service currently requires an API key. Add it locally as `REST_COUNTRIES_API_KEY` in `backend/.env`; alternatively set `COUNTRIES_SOURCE_FILE` to a local JSON file containing a complete API record array (or a full `{ "data": { "objects": [...] } }` response). The source file is not part of this repository. The script fails before database writes if a source is incomplete or does not match the expected scope.
+
+Run the explicit import only when you are ready:
+
+```sh
+npm run import:countries --prefix backend
+```
+
+The initial import supplies factual directory fields only; it does not populate cultural narratives. The REST Countries dataset may have gaps in optional fields, so missing facts remain absent rather than being guessed. Review its current data license and attribution terms before distributing imported data.
+
+## Country API
+
+All endpoints are under `/api/countries` and return JSON. Country list responses include `success`, `data`, and pagination metadata.
+
+- `GET /api/countries` — paginated list. Optional `page` (default `1`), `limit` (default `20`, max `100`), `search` (country common or official name), `continent` (one of Africa, Asia, Europe, North America, Oceania, South America), and `sort` (`name` or `-name`).
+- `GET /api/countries/continents` — available continent names and current record counts.
+- `GET /api/countries/:slug` — one country with all stored fields, or a JSON 404 response.
+
+Examples:
+
+```text
+GET http://localhost:5001/api/countries?search=Japan&page=1&limit=20
+GET http://localhost:5001/api/countries?continent=Asia&sort=-name
+GET http://localhost:5001/api/countries/continents
+GET http://localhost:5001/api/countries/japan
+```
+
+Run backend tests with `npm test --prefix backend`. They use Node's built-in test runner and do not require a live MongoDB database.
