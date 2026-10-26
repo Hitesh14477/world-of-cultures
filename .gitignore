@@ -1,0 +1,50 @@
+# Environment files and local secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Dependencies and generated build output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+
+# Logs and runtime files
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.pid
+*.seed
+*.pid.lock
+
+# Local caches and tool output
+.cache/
+.vite/
+.eslintcache
+.parcel-cache/
+.turbo/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Private keys, certificates, and local database exports
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.dump
+*.sql.gz
