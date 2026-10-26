@@ -1,0 +1,15 @@
+{
+  "name": "world-of-cultures",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k -n frontend,backend -c green,blue \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "npm --prefix frontend/vite-project run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "build:frontend": "npm --prefix frontend/vite-project run build",
+    "lint:frontend": "npm --prefix frontend/vite-project run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
