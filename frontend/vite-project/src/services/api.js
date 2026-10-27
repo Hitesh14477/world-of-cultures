@@ -3,7 +3,6 @@ import axios from 'axios'
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5001/api' : '/api'),
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 export async function fetchCountries({ signal } = {}) {
@@ -192,18 +191,24 @@ export async function fetchCommunityPosts({ country = '', page = 1, limit = 12, 
 }
 
 export async function createCommunityPost(formData, csrfToken, onUploadProgress) {
+  const isMultipart = typeof FormData !== 'undefined' && formData instanceof FormData
   const response = await apiClient.post('/community', formData, {
-    // Leave Content-Type unset for browser FormData so Axios/browser can add
-    // the multipart boundary required by Multer.
-    headers: { 'X-CSRF-Token': csrfToken },
+    headers: {
+      'X-CSRF-Token': csrfToken,
+      ...(isMultipart ? { 'Content-Type': 'multipart/form-data' } : {}),
+    },
     onUploadProgress,
   })
   return response.data?.data
 }
 
 export async function updateCommunityPost(postId, formData, csrfToken, onUploadProgress) {
+  const isMultipart = typeof FormData !== 'undefined' && formData instanceof FormData
   const response = await apiClient.patch(`/community/${encodeURIComponent(postId)}`, formData, {
-    headers: { 'X-CSRF-Token': csrfToken },
+    headers: {
+      'X-CSRF-Token': csrfToken,
+      ...(isMultipart ? { 'Content-Type': 'multipart/form-data' } : {}),
+    },
     onUploadProgress,
   })
   return response.data
