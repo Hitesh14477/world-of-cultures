@@ -120,6 +120,11 @@ function countryPresentation(country) {
   }
 }
 
+function imagePresentation(image) {
+  if (!image?.url) return null
+  return { url: image.url, caption: image.caption || '' }
+}
+
 function sortByTitle(left, right) {
   return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }) || left.id.localeCompare(right.id)
 }
@@ -187,18 +192,26 @@ export function createSearchController({ CountryModel = Country, CulturalEntryMo
       const queries = []
       if (windows.country) queries.push(resultQuery(
         CountryModel, countryQuery,
-        'name officialName slug flagEmoji flagImageUrl continent region subregion capital',
+        'name officialName slug flagEmoji flagImageUrl continent region subregion capital population',
         { name: 1, slug: 1 }, windows.country,
       ).then((records) => records.map((record) => ({
         id: record.slug,
         type: 'country',
         title: record.name,
-        country: countryPresentation(record),
+        country: {
+          ...countryPresentation(record),
+          officialName: record.officialName,
+          continent: record.continent,
+          region: record.region,
+          subregion: record.subregion,
+          capital: record.capital,
+          population: record.population,
+        },
         description: descriptionText(countrySummary(record)),
       }))))
       if (windows['cultural-entry']) queries.push(resultQuery(
         CulturalEntryModel, entryQuery,
-        'country category title summary content region',
+        'country category title summary content region image',
         { title: 1, _id: 1 }, windows['cultural-entry'], true,
       ).then((records) => records.map((record) => ({
         id: String(record._id),
@@ -206,11 +219,12 @@ export function createSearchController({ CountryModel = Country, CulturalEntryMo
         title: record.title,
         country: countryPresentation(record.country),
         category: record.category,
+        image: imagePresentation(record.image),
         description: descriptionText(record.summary || record.content),
       }))))
       if (windows.place) queries.push(resultQuery(
         PlaceModel, placeQuery,
-        'country name description location region category',
+        'country name description location region category image',
         { name: 1, _id: 1 }, windows.place, true,
       ).then((records) => records.map((record) => ({
         id: String(record._id),
@@ -218,6 +232,7 @@ export function createSearchController({ CountryModel = Country, CulturalEntryMo
         title: record.name,
         country: countryPresentation(record.country),
         category: record.category,
+        image: imagePresentation(record.image),
         description: descriptionText(record.description || [record.location, record.region].filter(Boolean).join(' · ')),
       }))))
 

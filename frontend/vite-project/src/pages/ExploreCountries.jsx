@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import CountryFlag from '../components/CountryFlag.jsx'
+import CountryCard from '../components/CountryCard.jsx'
 
 const PAGE_SIZE = 40
 
@@ -17,7 +17,7 @@ function PageFeedback({ children, action }) {
 
 export default function ExploreCountries({ countries, loadState, errorMessage, onRetry }) {
   const [search, setSearch] = useState('')
-  const [continent, setContinent] = useState('')
+  const [continent, setContinent] = useState(() => new URLSearchParams(window.location.search).get('continent') || '')
   const [region, setRegion] = useState('')
   const [sort, setSort] = useState('name')
   const [page, setPage] = useState(1)
@@ -60,12 +60,7 @@ export default function ExploreCountries({ countries, loadState, errorMessage, o
       {filteredCountries.length === 0 ? <div className="directory-feedback directory-no-results"><p>No countries match those filters.</p><button type="button" onClick={clearFilters}>Clear filters</button></div> : <>
         <ul className="directory-country-grid">{visibleCountries.map((country) => {
           const key = countryKey(country)
-          return <li key={key}><a className="directory-country" href={`/countries/${country.slug}`} aria-label={`Explore ${country.name}`}>
-            <span className="directory-card-top"><CountryFlag country={country} className="directory-flag" /><span className="directory-arrow" aria-hidden="true">↗</span></span>
-            <span className="directory-country-name">{country.name}</span>
-            <span className="directory-card-detail"><span>Capital</span><span>{country.capital?.length ? country.capital.join(', ') : '—'}</span></span>
-            <span className="directory-card-detail"><span>Region</span><span>{countryRegion(country) || '—'}</span></span>
-          </a></li>
+          return <li key={key}><CountryCard country={country} /></li>
         })}</ul>
         <nav className="directory-pagination" aria-label="Country pages"><span>Showing {firstIndex + 1}–{Math.min(firstIndex + PAGE_SIZE, filteredCountries.length)} of {filteredCountries.length}</span><div>
           <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1}>Previous</button><span>Page {currentPage} of {pageCount}</span><button type="button" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount}>Next</button>

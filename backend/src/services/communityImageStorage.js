@@ -33,8 +33,14 @@ export function createCommunityImageStorage({ env = process.env, client = cloudi
           overwrite: false,
           unique_filename: true,
         }, (error, result) => {
-          if (error) return reject(Object.assign(new Error('The image could not be uploaded.'), { statusCode: 502 }))
-          if (!result?.secure_url || !result?.public_id) return reject(Object.assign(new Error('Image storage returned an invalid result.'), { statusCode: 502 }))
+          if (error) return reject(Object.assign(new Error('The image could not be uploaded.'), {
+            statusCode: 502,
+            publicMessage: 'Your photo could not be uploaded. Please check your connection and try again.',
+          }))
+          if (!result?.secure_url || !result?.public_id) return reject(Object.assign(new Error('Image storage returned an invalid result.'), {
+            statusCode: 502,
+            publicMessage: 'Photo sharing is temporarily unavailable. Please try again later.',
+          }))
           return resolve({ url: result.secure_url, publicId: result.public_id })
         })
         stream.end(buffer)

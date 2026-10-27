@@ -11,6 +11,8 @@ World of Cultures is a MERN project. The frontend and backend run independently 
 
 The backend reads `MONGODB_URI`, `PORT`, `NODE_ENV`, and `FRONTEND_ORIGIN` from `backend/.env`. The frontend reads `VITE_API_URL` from `frontend/vite-project/.env`.
 
+For production, set `VITE_API_URL` at frontend build time to the deployed API origin ending in `/api`. It may be left unset only when the frontend host proxies `/api` to the backend on the same origin. Production builds never fall back to localhost. Set `FRONTEND_ORIGIN` to the exact deployed frontend origin; the backend refuses to start in production without it.
+
 Create local env files from the safe examples only when the files do not already exist:
 
 ```sh
@@ -28,7 +30,7 @@ The moderation API uses a server-verified administrator session. Set `ADMIN_USER
 npm run admin:set-password --prefix backend
 ```
 
-The password must be at least 14 characters. Keep `backend/.env` private and out of Git. The app uses Node's built-in scrypt password hashing, an HttpOnly, SameSite=Strict session cookie, CSRF tokens for state changes, and a small in-memory login throttle. Production cookies are marked Secure when `NODE_ENV=production`; production must use HTTPS and set `FRONTEND_ORIGIN` to the exact frontend origin. There is no public administrator-registration endpoint.
+The password must be at least 14 characters. Keep `backend/.env` private and out of Git. The app uses Node's built-in scrypt password hashing, an HttpOnly, SameSite=Strict session cookie, CSRF tokens for state changes, and an in-memory login throttle. Production cookies are marked Secure when `NODE_ENV=production`; production must use HTTPS and set `FRONTEND_ORIGIN` to the exact frontend origin. Because the cookie uses SameSite=Strict, deploy the frontend and API on the same site (or behind a same-origin proxy) and verify sign-in in the target browsers. There is no public administrator-registration endpoint.
 
 Administrator routes:
 
@@ -44,6 +46,8 @@ Open `/admin/login` locally after setting up the backend environment to access t
 ## User accounts and favourites
 
 Regular accounts use a separate `USER_SESSION_SECRET` in `backend/.env`; use a random value of at least 32 characters and keep it distinct from `ADMIN_SESSION_SECRET`. Regular accounts are self-registered by email and password. Passwords are hashed with Node's built-in asynchronous scrypt using a new random salt per account; no extra password package is required. Registration requires a password of at least 12 characters. There is no administrator role field or public way to grant administrator access.
+
+An administrator session also has a separate, server-managed member profile so the signed-in administrator can contribute cultural content, post and interact in Community, use My Collection, and edit available member profile details. The profile is keyed by a private server-generated admin identity, has no public login credentials, and keeps the administrator's collection separate from regular users. Member actions validate the signed admin cookie and its CSRF token server-side; administrator review endpoints continue to require the administrator role check.
 
 Regular user sessions use the `woc_user_session` HttpOnly cookie, separate from the administrator cookie. State-changing requests require the CSRF header and the configured frontend origin. The cookie is SameSite Strict and Secure in production. User accounts are not email-verified in this stage.
 
@@ -93,9 +97,11 @@ The health endpoint returns the API status and MongoDB status. Its HTTP status i
 
 ## Project structure
 
-- `frontend/vite-project/src/` — existing React + Vite starter, global styles, and the reusable Axios client in `api/client.js`.
+- `frontend/vite-project/src/` — React + Vite application pages, shared components, styles, and services.
+- `frontend/vite-project/src/services/api.js` — shared credentialed Axios client and API functions.
 - `frontend/vite-project/vite.config.js` — Vite, React, and Tailwind CSS v4 plugins.
-- `backend/index.js` — ES Module server entry point, middleware, and health route.
+- `backend/index.js` — ES Module server entry point and platform-port listener.
+- `backend/src/app.js` — Express middleware, API route registration, CORS, and health route.
 - `backend/src/config/database.js` — Mongoose connection setup with safe connection logging.
 - `backend/src/middleware/errorHandler.js` — JSON responses for unknown routes and server errors.
 - `backend/src/models/Country.js` — country identifiers, directory facts, and structured placeholders for sourced cultural content.
@@ -135,7 +141,7 @@ The Community page is a separate user-generated photo feed; posts are not Cultur
 
 Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `backend/.env` for uploads. The values are server-only; do not add them to frontend environment files or commit them. If these variables are absent, post creation returns a configuration error rather than storing files locally. The backend environment template contains empty placeholders.
 
-Administrators can edit or remove a published community post through `PATCH` or `DELETE /api/community/moderation/:id`, protected by the existing separate administrator session and CSRF check. A community reports queue, restoration workflow, and moderation interface are not part of this first stage. Likes and comments are also deferred.
+Administrators can edit or remove a published community post through `PATCH` or `DELETE /api/community/moderation/:id`, protected by the existing separate administrator session and CSRF check. Likes are authenticated and idempotent; comments are public to read and authenticated to add, with removal limited to the comment author, post owner, or administrator. A community reports queue and restoration workflow are not implemented.
 
 Run the focused API tests with `node --test tests/community.test.js` from `backend/`, or run the complete backend suite with `npm test --prefix backend`. Start the full project using the existing root development command.
 

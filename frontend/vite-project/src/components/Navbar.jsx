@@ -1,5 +1,7 @@
 import { getNavigationAuthView } from '../services/navigationAuth.js'
 import { buildAuthPath } from '../services/authNavigation.js'
+import NotificationBell from './NotificationBell.jsx'
+import AdminReviewBell from './AdminReviewBell.jsx'
 
 export default function Navbar({ userAuth, adminAuth }) {
   const accountView = getNavigationAuthView(userAuth, adminAuth)
@@ -11,24 +13,36 @@ export default function Navbar({ userAuth, adminAuth }) {
         <a href="/countries">Explore Countries</a>
         <a href="/search">Search</a>
         <a href="/contribute">Contribute</a>
-        {!accountView.user && <a href="/my-collection">Favourites</a>}
         <a href="/community">Community</a>
-        <a href={accountView.user || userAuth?.status === 'loading' || userAuth?.status === 'error' ? '/profile' : buildAuthPath('login', '/profile')}>Profile</a>
+        <a href={accountView.user || accountView.admin || userAuth?.status === 'loading' || userAuth?.status === 'error' ? '/my-collection' : buildAuthPath('login', '/my-collection')}>My Collection</a>
+        {accountView.admin && <a href="/admin">Admin Dashboard</a>}
       </nav>
       <div className="site-account-actions" aria-label="Account actions">
         {accountView.loading && <span className="nav-auth-loading" role="status">Checking account…</span>}
         {!accountView.loading && <>
-          {accountView.user && <div className="site-account-group" aria-label="Regular user account">
-            <span className="site-account-identity">{accountView.user.username || accountView.user.email}</span>
-            <a href="/my-collection">My Collection</a>
-            <button className="nav-account-button" type="button" onClick={userAuth.logout} disabled={userAuth.logoutBusy} aria-label="Sign out of your regular account">{userAuth.logoutBusy ? 'Signing out…' : 'Sign out'}</button>
+          {accountView.user && !accountView.admin && <div className="site-account-group" aria-label="Regular user account">
+            <NotificationBell key={accountView.user.id} user={accountView.user} csrfToken={userAuth.csrfToken} />
+            <a className="site-account-profile" href="/profile" aria-label={`Open ${accountView.user.username || 'your'} profile`}>
+              {accountView.user.avatarUrl
+                ? <img className="site-account-avatar" src={accountView.user.avatarUrl} alt="" />
+                : <span className="site-account-avatar site-account-avatar-fallback" aria-hidden="true">{(accountView.user.username || accountView.user.email || 'W').slice(0, 1).toUpperCase()}</span>}
+              <span className="site-account-identity">{accountView.user.username || 'Account'}</span>
+            </a>
+            <button className="nav-account-button logout-control" type="button" onClick={userAuth.logout} disabled={userAuth.logoutBusy} aria-label="Log out of your regular account">{userAuth.logoutBusy ? 'Logging out…' : 'Log out'}</button>
           </div>}
-          {accountView.showRegularSignIn && <div className="site-account-group">
+          {accountView.showRegularSignIn && !accountView.admin && <div className="site-account-group">
+            <NotificationBell key="signed-out" user={null} csrfToken="" />
             <a href="/login">Sign in</a><a href="/register">Create account</a>
           </div>}
           {accountView.admin && <div className="site-account-group" aria-label="Administrator account">
-            <a href="/admin">Review submissions</a>
-            <button className="nav-account-button" type="button" onClick={adminAuth.logout} disabled={adminAuth.logoutBusy} aria-label="Sign out of the administrator account">{adminAuth.logoutBusy ? 'Signing out…' : 'Sign out'}</button>
+            <AdminReviewBell session={adminAuth.session} />
+            <a className="site-account-profile" href="/admin/profile" aria-label={`Open administrator profile for ${accountView.admin.username}`}>
+              {adminAuth.session?.member?.avatarUrl
+                ? <img className="site-account-avatar" src={adminAuth.session.member.avatarUrl} alt="" />
+                : <span className="site-account-avatar site-account-avatar-fallback" aria-hidden="true">{(accountView.admin.username || 'A').slice(0, 1).toUpperCase()}</span>}
+              <span className="site-account-identity">{accountView.admin.username}</span>
+            </a>
+            <button className="nav-account-button logout-control" type="button" onClick={adminAuth.logout} disabled={adminAuth.logoutBusy} aria-label="Log out of the administrator account">{adminAuth.logoutBusy ? 'Logging out…' : 'Log out'}</button>
           </div>}
           {accountView.userError && <p className="nav-account-message" role="alert">
             {accountView.userError}

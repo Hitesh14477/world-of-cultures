@@ -2,6 +2,7 @@ import SourceReferences from '../components/SourceReferences.jsx'
 import usePublishedCountryRecord from '../hooks/usePublishedCountryRecord.js'
 import FavouriteButton from '../components/FavouriteButton.jsx'
 import FactualClaims from '../components/FactualClaims.jsx'
+import CountryFlag from '../components/CountryFlag.jsx'
 
 function categoryLabel(value = '') {
   return value.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -33,7 +34,7 @@ export default function CulturalEntryDetail({ slug, entryId, auth }) {
     <article className="record-detail">
       <div className="record-detail-layout">
         <div className="record-detail-copy">
-          <p className="eyebrow">{country.name} · {categoryLabel(record.category)}</p>
+          <p className="eyebrow record-country-eyebrow"><CountryFlag country={country} className="record-country-flag" /><span>{country.name} · {categoryLabel(record.category)}</span></p>
           <h1>{record.title}</h1>
           <FavouriteButton auth={auth} type="cultural-entry" targetId={String(record._id)} />
           {record.region && <p className="record-region">{record.region}</p>}

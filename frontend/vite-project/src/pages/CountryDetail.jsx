@@ -24,9 +24,12 @@ function formatNumber(value) {
 
 function CountryOverview({ country }) {
   const area = formatNumber(country.area)
+  const region = [country.continent, country.region, country.subregion]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join(' · ')
   const facts = [
     ['Capital', country.capital?.length ? country.capital.join(', ') : null],
-    ['Region', [country.continent, country.region, country.subregion].filter(Boolean).join(' · ') || null],
+    ['Region', region || null],
     ['Population', formatNumber(country.population)],
     ['Area', area ? `${area} km²` : null],
     ['Languages', country.languages?.length ? country.languages.map(({ name }) => name).join(', ') : null],
@@ -38,38 +41,45 @@ function CountryOverview({ country }) {
   return <dl className="country-facts">{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
 }
 
-function CulturalEntryCard({ entry, slug }) {
-  const href = `/countries/${encodeURIComponent(slug)}/cultural-entries/${encodeURIComponent(entry._id)}`
+function CulturalEntryCard({ title, description, details, image, sources, imageAttributions, href, countryName }) {
+  const hasSources = sources?.length || imageAttributions?.length
   return <article className="detail-entry">
-    <div className="detail-entry-layout">
-      <div className="detail-entry-copy">
-        <h3><a className="record-card-link" href={href}>{entry.title}<span aria-hidden="true"> ↗</span></a></h3>
-        {entry.region && <p className="detail-region">{entry.region}</p>}
-        {entry.summary && <p className="detail-summary">{entry.summary}</p>}
-        <SourceReferences sources={entry.sources} imageAttributions={entry.imageAttributions} />
-      </div>
-      <figure className={`contribution-published-image detail-entry-image${entry.image?.url ? '' : ' is-missing'}`}>
-        {entry.image?.url ? <><img src={entry.image.url} alt={entry.image.caption || entry.title} />{entry.image.caption && <figcaption>{entry.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
-      </figure>
-    </div>
+    <h3><a className="record-card-link" href={href}>{title}<span aria-hidden="true"> ↗</span><span className="sr-only"> Read full entry</span></a></h3>
+    <figure className={`contribution-published-image detail-entry-image${image?.url ? '' : ' is-missing'}`}>
+      {image?.url ? <><img src={image.url} alt={image.caption || title} />{image.caption && <figcaption>{image.caption}</figcaption>}</> : <figcaption>Image unavailable</figcaption>}
+    </figure>
+    {details && <p className="detail-region">{details}</p>}
+    {description && <p className="detail-summary">{description}</p>}
+    <p className="detail-country-label">{countryName}</p>
+    {hasSources ? <SourceReferences sources={sources} imageAttributions={imageAttributions} /> : null}
+    <a className="detail-read-more" href={href}>Read more <span aria-hidden="true">→</span></a>
   </article>
 }
 
-function PlaceCard({ place, slug }) {
-  const href = `/countries/${encodeURIComponent(slug)}/places/${encodeURIComponent(place._id)}`
-  return <article className="detail-entry">
-    <div className="detail-entry-layout">
-      <div className="detail-entry-copy">
-        <h3><a className="record-card-link" href={href}>{place.name}<span aria-hidden="true"> ↗</span></a></h3>
-        {(place.location || place.region) && <p className="detail-region">{[place.location, place.region].filter(Boolean).join(' · ')}</p>}
-        {place.description && <p className="detail-copy">{place.description}</p>}
-        <SourceReferences sources={place.sources} imageAttributions={place.imageAttributions} />
-      </div>
-      <figure className={`contribution-published-image detail-entry-image${place.image?.url ? '' : ' is-missing'}`}>
-        {place.image?.url ? <><img src={place.image.url} alt={place.image.caption || place.name} />{place.image.caption && <figcaption>{place.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
-      </figure>
-    </div>
-  </article>
+function CulturalEntryLink({ entry, slug, countryName }) {
+  return <CulturalEntryCard
+    title={entry.title}
+    description={entry.summary}
+    details={entry.region}
+    image={entry.image}
+    sources={entry.sources}
+    imageAttributions={entry.imageAttributions}
+    href={`/countries/${encodeURIComponent(slug)}/cultural-entries/${encodeURIComponent(entry._id)}`}
+    countryName={countryName}
+  />
+}
+
+function PlaceEntryLink({ place, slug, countryName }) {
+  return <CulturalEntryCard
+    title={place.name}
+    description={place.description}
+    details={[place.location, place.region].filter(Boolean).join(' · ')}
+    image={place.image}
+    sources={place.sources}
+    imageAttributions={place.imageAttributions}
+    href={`/countries/${encodeURIComponent(slug)}/places/${encodeURIComponent(place._id)}`}
+    countryName={countryName}
+  />
 }
 
 export default function CountryDetail({ slug, auth }) {
@@ -134,7 +144,6 @@ export default function CountryDetail({ slug, auth }) {
   }
 
   const { country, entries, places } = data
-  const factsRegion = [country.continent, country.region, country.subregion].filter(Boolean).join(' · ')
   const publishedCount = entries.length + places.length
 
   return <main className="country-detail-page">
@@ -142,9 +151,8 @@ export default function CountryDetail({ slug, auth }) {
     <header className="country-detail-header">
       <CountryFlag country={country} className="detail-flag" />
       <div><p className="eyebrow">Country profile</p><h1>{country.name}</h1>{country.officialName && country.officialName !== country.name && <p className="detail-official-name">{country.officialName}</p>}</div>
+      <FavouriteButton auth={auth} type="country" targetId={country.slug} />
     </header>
-    <FavouriteButton auth={auth} type="country" targetId={country.slug} />
-    {factsRegion && <p className="country-detail-region">{factsRegion}</p>}
     <CountryOverview country={country} />
 
     <section className="culture-index" aria-labelledby="culture-index-title">
@@ -167,15 +175,22 @@ export default function CountryDetail({ slug, auth }) {
         const sectionEntries = entries.filter((entry) => entry.category === category)
         const sectionPlaces = category === 'places' ? places : []
         const count = sectionEntries.length + sectionPlaces.length
-        return <section className="cultural-section" id={`culture-${category}`} key={category} aria-labelledby={`heading-${category}`}>
+        return <section className={`cultural-section${count === 0 ? ' is-empty' : ''}`} id={`culture-${category}`} key={category} aria-labelledby={`heading-${category}`}>
           <div className="cultural-section-heading">
             <h2 id={`heading-${category}`}>{title}</h2>
-            {count > 0 && <span>{count} published {count === 1 ? 'item' : 'items'}</span>}
+            <div className="cultural-section-actions">
+              <span>{count} published {count === 1 ? 'item' : 'items'}</span>
+              <a className="contribute-section-link" href={contributionHref(country.slug, category)}>+ Contribute to this section</a>
+            </div>
           </div>
-          {sectionEntries.map((entry) => <CulturalEntryCard key={entry._id} entry={entry} slug={slug} />)}
-          {sectionPlaces.map((place) => <PlaceCard key={place._id} place={place} slug={slug} />)}
-          {count === 0 && <p className="collection-note">Information for this section is still being collected. Only reviewed and published material appears here.</p>}
-          <a className="contribute-section-link" href={contributionHref(country.slug, category)}>+ Contribute to this section</a>
+          {count > 0 && <div className="cultural-entry-grid">
+            {sectionEntries.map((entry) => <CulturalEntryLink key={entry._id} entry={entry} slug={slug} countryName={country.name} />)}
+            {sectionPlaces.map((place) => <PlaceEntryLink key={place._id} place={place} slug={slug} countryName={country.name} />)}
+          </div>}
+          {count === 0 && <div className="category-empty-state">
+            <span className="category-empty-marker" aria-hidden="true">—</span>
+            <p><strong>No published entries yet</strong><span>Share a contribution to help build this section.</span></p>
+          </div>}
         </section>
       })}
     </section>

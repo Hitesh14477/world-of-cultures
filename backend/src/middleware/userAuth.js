@@ -68,6 +68,7 @@ function publicUser(user) {
     id: String(user._id),
     ...(typeof user.username === 'string' ? { username: user.username } : {}),
     ...(typeof user.displayName === 'string' ? { displayName: user.displayName } : {}),
+    ...(typeof user.avatarUrl === 'string' && user.avatarUrl ? { avatarUrl: user.avatarUrl } : {}),
     email: user.email,
   }
 }
@@ -129,6 +130,17 @@ export function createUserAuth({ UserModel, env = process.env }) {
     }
     req.userSession = session
     req.user = { id: session.userId }
+    return next()
+  }
+
+  function optionalUser(req, _res, next) {
+    const session = decodeToken(cookieToken(req), secret)
+    const activeSession = session ? activeSessions.get(session.sid) : null
+    if (session && activeSession && activeSession.exp === session.exp && activeSession.userId === session.userId) {
+      req.userSession = session
+      req.user = { id: session.userId }
+      req.memberAuthType = 'user'
+    }
     return next()
   }
 
@@ -195,7 +207,7 @@ export function createUserAuth({ UserModel, env = process.env }) {
 
   async function currentSession(req, res, next) {
     try {
-      const user = await UserModel.findById(req.user.id).select('_id username displayName email createdAt').lean()
+      const user = await UserModel.findById(req.user.id).select('_id username displayName avatarUrl email createdAt').lean()
       if (!user) {
         activeSessions.delete(req.userSession.sid)
         setCookie(res, null, env, 0)
@@ -214,5 +226,5 @@ export function createUserAuth({ UserModel, env = process.env }) {
     return res.json({ success: true, message: 'You have been signed out.' })
   }
 
-  return { register, login, currentSession, logout, requireUser, requireCsrf }
+  return { register, login, currentSession, logout, requireUser, optionalUser, requireCsrf }
 }

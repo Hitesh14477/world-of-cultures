@@ -35,6 +35,9 @@ function fakeModel(records) {
 
   return {
     records,
+    async countDocuments(filter = {}) {
+      return records.filter((record) => Object.entries(filter).every(([key, value]) => record[key] === value)).length
+    },
     find(filter) {
       return query(() => records.filter((record) => record.reviewStatus === filter.reviewStatus))
     },
@@ -62,13 +65,27 @@ function testEnv() {
   }
 }
 
-async function withServer({ entries, places, env = testEnv() }, run) {
+async function withServer({ entries, places, users = [], env = testEnv() }, run) {
+  const notifications = []
   const server = createApp({
     CountryModel: {
+      async countDocuments() { return 195 },
       findOne() { return { select() { return this }, lean() { return Promise.resolve({ _id: '65fabc1234567890abcdef99' }) } } },
     },
     CulturalEntryModel: fakeModel(entries),
     PlaceModel: fakeModel(places),
+    UserModel: {
+      async countDocuments(filter = {}) { return users.filter((user) => !filter.username || filter.username.test(user.username || '')).length },
+      find(filter = {}) {
+        const selected = users.filter((user) => !filter.username || filter.username.test(user.username || ''))
+        return {
+          select() { return this }, sort() { return this }, skip(offset) { this.offset = offset; return this },
+          limit(limit) { this.pageSize = limit; return this },
+          lean() { return Promise.resolve(selected.slice(this.offset || 0, (this.offset || 0) + (this.pageSize || selected.length))) },
+        }
+      },
+    },
+    NotificationModel: { async create(document) { notifications.push(document); return document } },
     adminEnv: env,
   }).listen(0, '127.0.0.1')
   await new Promise((resolve, reject) => {
@@ -77,7 +94,7 @@ async function withServer({ entries, places, env = testEnv() }, run) {
   })
   const address = server.address()
   try {
-    await run(`http://127.0.0.1:${address.port}`)
+    await run(`http://127.0.0.1:${address.port}`, notifications)
   } finally {
     await new Promise((resolve) => server.close(resolve))
   }
@@ -106,6 +123,8 @@ test('every moderation endpoint rejects unauthenticated requests', async () => {
   await withServer({ entries: [], places: [] }, async (baseUrl) => {
     const requests = [
       ['GET', '/api/admin/session'],
+      ['GET', '/api/admin/overview'],
+      ['GET', '/api/admin/users'],
       ['GET', '/api/admin/pending'],
       ['GET', `/api/admin/submissions/cultural-entries/${entryId}`],
       ['POST', `/api/admin/submissions/places/${placeId}/approve`],
@@ -166,6 +185,42 @@ test('authorized administrator can list pending entries and places with sources'
   })
 })
 
+test('administrator overview reports database counts and user search returns only safe profile fields', async () => {
+  const users = [
+    { _id: 'user-1', username: 'culture_editor', displayName: 'Culture Editor', email: 'editor@example.org', createdAt: new Date('2025-01-01'), passwordHash: 'secret-hash' },
+    { _id: 'user-2', username: 'reader', displayName: '', email: 'reader@example.org', createdAt: new Date('2025-02-01'), passwordHash: 'secret-hash' },
+  ]
+  const entries = [
+    makeRecord(entryId, { reviewStatus: 'published' }),
+    makeRecord('65fabc1234567890abcdef14', { reviewStatus: 'pending_review' }),
+  ]
+  const places = [makeRecord(placeId, { reviewStatus: 'pending_review' })]
+  await withServer({ entries, places, users }, async (baseUrl) => {
+    const auth = await login(baseUrl)
+    const headers = authenticatedOptions(auth.cookie, auth.body.data.csrfToken).headers
+    const overviewResponse = await fetch(`${baseUrl}/api/admin/overview`, { headers })
+    assert.equal(overviewResponse.status, 200)
+    assert.deepEqual((await overviewResponse.json()).data.statistics, {
+      totalUsers: 2,
+      totalCountries: 195,
+      publishedEntries: 1,
+      pendingCulturalEntries: 1,
+      pendingPlaces: 1,
+    })
+
+    const usersResponse = await fetch(`${baseUrl}/api/admin/users?search=culture&page=1&limit=10`, { headers })
+    assert.equal(usersResponse.status, 200)
+    const body = await usersResponse.json()
+    assert.equal(body.data.length, 1)
+    assert.equal(body.data[0].username, 'culture_editor')
+    assert.equal('passwordHash' in body.data[0], false)
+    assert.equal(body.pagination.total, 1)
+
+    const invalid = await fetch(`${baseUrl}/api/admin/users?limit=500`, { headers })
+    assert.equal(invalid.status, 400)
+  })
+})
+
 test('administrator can inspect and approve both record types without rewriting content or sources', async () => {
   const entries = [makeRecord(entryId, { title: 'A cultural entry', category: 'history', content: 'Original entry text.' })]
   const places = [makeRecord(placeId, { name: 'A heritage place', category: 'heritage_site', description: 'Original place text.' })]
@@ -202,6 +257,29 @@ test('administrator cannot publish a legacy pending submission without a valid i
     assert.equal(response.status, 409)
     assert.match((await response.json()).message, /valid image/i)
     assert.equal(entries[0].reviewStatus, 'pending_review')
+  })
+})
+
+test('successful contribution decisions notify the submitting user, while failed decisions do not', async () => {
+  const submitterId = '65fabc1234567890abcdef55'
+  const entries = [makeRecord(entryId, { title: 'Foodways', category: 'traditional_food', content: 'Text.', submittedBy: submitterId })]
+  const places = [makeRecord(placeId, { name: 'Old town', category: 'heritage_site', description: 'Place.', submittedBy: submitterId })]
+  await withServer({ entries, places }, async (baseUrl, notifications) => {
+    const auth = await login(baseUrl)
+    const failed = await fetch(`${baseUrl}/api/admin/submissions/cultural-entries/${entryId}/approve`, authenticatedOptions(auth.cookie, auth.body.data.csrfToken, 'POST', { title: 'tamper' }))
+    assert.equal(failed.status, 400)
+    assert.equal(notifications.length, 0)
+    const approved = await fetch(`${baseUrl}/api/admin/submissions/cultural-entries/${entryId}/approve`, authenticatedOptions(auth.cookie, auth.body.data.csrfToken, 'POST', {}))
+    assert.equal(approved.status, 200)
+    const rejected = await fetch(`${baseUrl}/api/admin/submissions/places/${placeId}/reject`, authenticatedOptions(auth.cookie, auth.body.data.csrfToken, 'POST', { reason: 'Please provide a stronger reference.' }))
+    assert.equal(rejected.status, 200)
+    assert.equal(notifications.length, 2)
+    assert.equal(notifications[0].type, 'contribution_approved')
+    assert.equal(String(notifications[0].recipient), submitterId)
+    assert.match(notifications[0].message, /India.*traditional food/i)
+    assert.equal(notifications[1].type, 'contribution_rejected')
+    assert.match(notifications[1].message, /stronger reference/)
+    assert.equal(notifications[1].link, '/profile#My%20Contributions')
   })
 })
 

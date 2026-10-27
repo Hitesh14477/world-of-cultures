@@ -14,6 +14,8 @@ const ENTRY_ID = '65fabc1234567890abcdef12'
 const PENDING_ID = '65fabc1234567890abcdef13'
 const REJECTED_ID = '65fabc1234567890abcdef14'
 const PLACE_ID = '65fabc1234567890abcdef15'
+const COMMUNITY_POST_ID = '65fabc1234567890abcdef17'
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=', 'base64')
 const ADMIN_SALT = randomBytes(16).toString('base64url')
 const ADMIN_HASH = `scrypt$${ADMIN_SALT}$${randomBytes(64).toString('base64url')}`
 
@@ -62,7 +64,8 @@ function makeUsers() {
       return user
     },
     findOne(filter) {
-      return queryResult(() => records.find((user) => (filter.email ? user.email === filter.email : true)
+      return queryResult(() => records.find((user) => (filter.adminIdentity ? user.adminIdentity === filter.adminIdentity : true)
+        && (filter.email ? user.email === filter.email : true)
         && (filter.username ? user.username === filter.username : true)
         && (filter._id?.$ne ? String(user._id) !== String(filter._id.$ne) : true)) || null)
     },
@@ -72,6 +75,9 @@ function makeUsers() {
     findByIdAndUpdate(id, update) {
       return queryResult(() => {
         const user = records.find((row) => String(row._id) === String(id))
+        if (user && update.$set.username && records.some((row) => row !== user && row.username === update.$set.username)) {
+          throw Object.assign(new Error('duplicate username'), { code: 11000, keyPattern: { username: 1 } })
+        }
         if (user) Object.assign(user, update.$set)
         return user || null
       })
@@ -141,13 +147,26 @@ function makeCommunityPosts(rows = []) {
   return {
     records: rows,
     find(filter) {
-      return queryResult(({ offset, maximum }) => rows.filter((row) => String(row.author) === String(filter.author) && row.status !== 'removed').slice(offset, offset + maximum).map((row) => ({ ...row, country: countryRecords.find((country) => country._id === row.country) || row.country })))
+      return queryResult(({ offset, maximum }) => rows.filter((row) => {
+        if (filter.author && String(row.author) !== String(filter.author)) return false
+        if (typeof filter.status === 'string' && row.status !== filter.status) return false
+        if (filter.status?.$ne && row.status === filter.status.$ne) return false
+        if (filter._id?.$in && !filter._id.$in.some((id) => String(id) === String(row._id))) return false
+        return true
+      }).slice(offset, offset + maximum).map((row) => ({ ...row, country: countryRecords.find((country) => country._id === row.country) || row.country })))
     },
     countDocuments(filter) { return Promise.resolve(rows.filter((row) => String(row.author) === String(filter.author) && row.status !== 'removed').length) },
+    findOne(filter) {
+      return queryResult(() => {
+        const row = rows.find((item) => String(item._id) === String(filter._id)
+          && (!filter.status || item.status === filter.status))
+        return row ? { ...row, country: countryRecords.find((country) => country._id === row.country) || row.country } : null
+      })
+    },
   }
 }
 
-async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPosts = [], culturalEntryModel = null } = {}) {
+async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPosts = [], culturalEntryModel = null, imageStorage } = {}) {
   const UserModel = makeUsers()
   const UserFavouriteModel = makeFavourites()
   const CommunityPostModel = makeCommunityPosts(communityPosts)
@@ -161,6 +180,7 @@ async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPo
     UserModel,
     UserFavouriteModel,
     CommunityPostModel,
+    communityImageStorage: imageStorage,
     userEnv: { USER_SESSION_SECRET: USER_SECRET, FRONTEND_ORIGIN: ORIGIN, NODE_ENV: 'test' },
     adminEnv: { ADMIN_USERNAME: 'admin', ADMIN_SESSION_SECRET: 'admin-session-secret-for-isolation-tests', ADMIN_PASSWORD_HASH: adminPasswordHash, FRONTEND_ORIGIN: ORIGIN },
   })
@@ -243,6 +263,15 @@ test('username is optional for legacy user records and has a partial unique inde
   const usernameIndex = User.schema.indexes().find(([fields]) => fields.username === 1)
   assert.equal(usernameIndex[1].unique, true)
   assert.deepEqual(usernameIndex[1].partialFilterExpression, { username: { $type: 'string' } })
+  const avatarUser = new User({
+    email: 'avatar@example.org',
+    passwordHash: `scrypt$${randomBytes(16).toString('base64url')}$${randomBytes(64).toString('base64url')}`,
+    avatarUrl: 'https://images.example.org/avatar.png',
+  })
+  await avatarUser.validate()
+  assert.equal(avatarUser.avatarUrl, 'https://images.example.org/avatar.png')
+  avatarUser.avatarUrl = 'http://images.example.org/avatar.png'
+  await assert.rejects(avatarUser.validate(), (error) => Boolean(error.errors.avatarUrl))
 })
 
 test('login succeeds, wrong credentials fail safely, current session omits hashes, and logout revokes the session', async () => {
@@ -303,6 +332,42 @@ test('regular-user and administrator logout revoke only their own sessions', asy
   }, { adminPasswordHash })
 })
 
+test('administrator favourites persist on a separate member identity without mixing regular-user collections', async () => {
+  const adminPassword = 'administrator member access test password'
+  const adminPasswordHash = await hashPassword(adminPassword)
+  await withUserServer(async (baseUrl, { UserFavouriteModel }) => {
+    const adminLogin = await fetch(`${baseUrl}/api/admin/login`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: adminPassword }),
+    })
+    assert.equal(adminLogin.status, 200)
+    const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0]
+    const adminMemberResponse = await fetch(`${baseUrl}/api/admin/member-session`, { headers: { Cookie: adminCookie } })
+    const adminMemberData = (await adminMemberResponse.json()).data
+    assert.equal(adminMemberResponse.status, 200)
+
+    const add = await post(baseUrl, '/api/users/me/favourites', { type: 'country', id: 'india' }, { cookie: adminCookie, csrf: adminMemberData.csrfToken })
+    assert.equal(add.response.status, 201)
+    assert.equal(UserFavouriteModel.records[0].user, adminMemberData.member.id)
+    const adminCollection = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: { Cookie: adminCookie } })
+    assert.equal((await adminCollection.json()).data.countries[0].country.name, 'India')
+
+    const regular = await register(baseUrl, 'reader@example.org', undefined, 'reader')
+    const regularCollection = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: { Cookie: regular.cookie } })
+    assert.deepEqual((await regularCollection.json()).data.countries, [])
+    const adminCollectionAfterNavigation = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: { Cookie: adminCookie } })
+    assert.equal((await adminCollectionAfterNavigation.json()).data.countries.length, 1)
+
+    const remove = await fetch(`${baseUrl}/api/users/me/favourites/country/india`, {
+      method: 'DELETE',
+      headers: { ...userHeaders(adminCookie, adminMemberData.csrfToken), 'Content-Type': 'application/json' },
+    })
+    assert.equal(remove.status, 200)
+    assert.equal(UserFavouriteModel.records.length, 0)
+  }, { adminPasswordHash })
+})
+
 test('profile endpoints return only the authenticated account data and allow safe field updates', async () => {
   const myEntry = { _id: ENTRY_ID, country: COUNTRY_ID, submittedBy: USER_A, title: 'My pending entry', category: 'history', reviewStatus: 'pending_review', createdAt: new Date('2026-02-02') }
   const otherEntry = { _id: PENDING_ID, country: COUNTRY_ID, submittedBy: USER_B, title: 'Another user entry', category: 'history', reviewStatus: 'pending_review', createdAt: new Date('2026-02-03') }
@@ -336,13 +401,33 @@ test('profile endpoints return only the authenticated account data and allow saf
     const update = await fetch(`${baseUrl}/api/users/me/profile`, {
       method: 'PATCH',
       headers: { ...userHeaders(first.cookie, first.body.data.csrfToken), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'Updated_Name', displayName: 'Atlas Reader', bio: 'A short profile.' }),
+      body: JSON.stringify({ username: 'Updated_Name', displayName: 'Atlas Reader', bio: 'A short profile.', avatarUrl: 'https://images.example.org/profile.png' }),
     })
     assert.equal(update.status, 200)
     const updated = await update.json()
     assert.equal(updated.data.username, 'updated_name')
     assert.equal(updated.data.displayName, 'Atlas Reader')
+    assert.equal(updated.data.avatarUrl, 'https://images.example.org/profile.png')
     assert.equal(UserModel.records[0].bio, 'A short profile.')
+
+    const ownNameAvailable = await fetch(`${baseUrl}/api/users/me/username-availability?username=UPDATED_NAME`, { headers: userHeaders(first.cookie) })
+    const ownNameResult = await ownNameAvailable.json()
+    assert.equal(ownNameAvailable.status, 200)
+    assert.deepEqual(ownNameResult.data, { available: true })
+    assert.equal(JSON.stringify(ownNameResult).includes(USER_A), false)
+    const unchangedUsername = await fetch(`${baseUrl}/api/users/me/profile`, {
+      method: 'PATCH',
+      headers: { ...userHeaders(first.cookie, first.body.data.csrfToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'UPDATED_NAME', bio: 'Changed while keeping the same handle.' }),
+    })
+    assert.equal(unchangedUsername.status, 200)
+    assert.equal((await unchangedUsername.json()).data.username, 'updated_name')
+    const takenName = await fetch(`${baseUrl}/api/users/me/username-availability?username=PROFILE_OTHER`, { headers: userHeaders(first.cookie) })
+    assert.deepEqual((await takenName.json()).data, { available: false })
+    const invalidName = await fetch(`${baseUrl}/api/users/me/username-availability?username=bad-name`, { headers: userHeaders(first.cookie) })
+    assert.equal(invalidName.status, 400)
+    const guestCheck = await fetch(`${baseUrl}/api/users/me/username-availability?username=available_name`)
+    assert.equal(guestCheck.status, 401)
 
     const forbidden = await fetch(`${baseUrl}/api/users/me/profile`, {
       method: 'PATCH',
@@ -356,8 +441,74 @@ test('profile endpoints return only the authenticated account data and allow saf
       body: JSON.stringify({ username: 'profile_other' }),
     })
     assert.equal(duplicate.status, 409)
+    const invalidUsername = await fetch(`${baseUrl}/api/users/me/profile`, {
+      method: 'PATCH',
+      headers: { ...userHeaders(first.cookie, first.body.data.csrfToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'not valid' }),
+    })
+    assert.equal(invalidUsername.status, 400)
+    const invalidAvatar = await fetch(`${baseUrl}/api/users/me/profile`, {
+      method: 'PATCH',
+      headers: { ...userHeaders(first.cookie, first.body.data.csrfToken), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avatarUrl: 'http://images.example.org/profile.png' }),
+    })
+    assert.equal(invalidAvatar.status, 400)
     assert.equal(second.response.status, 201)
   }, { communityPosts: [], culturalEntryModel: entryModel })
+})
+
+test('profile image upload validates image bytes and stores the image through the configured provider', async () => {
+  const uploads = []
+  const removals = []
+  const imageStorage = {
+    async upload(buffer, folder) {
+      uploads.push({ buffer, folder })
+      return { url: 'https://images.example.org/profile-upload.png', publicId: 'profile-images/new-avatar' }
+    },
+    async remove(publicId) { removals.push(publicId) },
+  }
+  await withUserServer(async (baseUrl, { UserModel }) => {
+    const account = await register(baseUrl, 'avatar-upload@example.org', undefined, 'avatar_upload')
+    const headers = { Origin: ORIGIN, Cookie: account.cookie, 'X-CSRF-Token': account.body.data.csrfToken }
+    const invalid = new FormData()
+    invalid.append('avatar', new Blob(['not an image'], { type: 'image/png' }), 'avatar.png')
+    const rejected = await fetch(`${baseUrl}/api/users/me/profile`, { method: 'PATCH', headers, body: invalid })
+    assert.equal(rejected.status, 415)
+    assert.equal(uploads.length, 0)
+
+    UserModel.records[0].avatarPublicId = 'profile-images/old-avatar'
+    const form = new FormData()
+    form.append('username', 'avatar_upload')
+    form.append('displayName', 'Avatar Upload')
+    form.append('bio', 'Testing profile image upload.')
+    form.append('avatar', new Blob([PNG], { type: 'image/png' }), 'avatar.png')
+    const response = await fetch(`${baseUrl}/api/users/me/profile`, { method: 'PATCH', headers, body: form })
+    const body = await response.json()
+    assert.equal(response.status, 200)
+    assert.equal(body.data.avatarUrl, 'https://images.example.org/profile-upload.png')
+    assert.equal(Object.hasOwn(body.data, 'avatarPublicId'), false)
+    assert.equal(UserModel.records[0].avatarPublicId, 'profile-images/new-avatar')
+    assert.equal(uploads.length, 1)
+    assert.equal(uploads[0].folder, 'world-of-cultures/profile-pictures')
+    assert.deepEqual(removals, ['profile-images/old-avatar'])
+  }, { imageStorage })
+})
+
+test('simultaneous profile updates cannot claim the same normalized username', async () => {
+  await withUserServer(async (baseUrl, { UserModel }) => {
+    const first = await register(baseUrl, 'first-race@example.org', undefined, 'first_racer')
+    const second = await register(baseUrl, 'second-race@example.org', undefined, 'second_racer')
+    async function claim(account) {
+      return fetch(`${baseUrl}/api/users/me/profile`, {
+        method: 'PATCH',
+        headers: { ...userHeaders(account.cookie, account.body.data.csrfToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'shared_name' }),
+      })
+    }
+    const responses = await Promise.all([claim(first), claim(second)])
+    assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409])
+    assert.equal(UserModel.records.filter((user) => user.username === 'shared_name').length, 1)
+  })
 })
 
 test('unauthenticated favourite reads and writes are rejected', async () => {
@@ -371,14 +522,15 @@ test('unauthenticated favourite reads and writes are rejected', async () => {
   })
 })
 
-test('favourites support country, published entry, and place; duplicates are idempotent', async () => {
-  await withUserServer(async (baseUrl, { UserFavouriteModel }) => {
+test('favourites support country, published entry, place, and community post; duplicates are idempotent', async () => {
+  await withUserServer(async (baseUrl, { UserFavouriteModel, CommunityPostModel }) => {
     const account = await register(baseUrl, 'reader@example.org')
     const auth = { cookie: account.cookie, csrf: account.body.data.csrfToken }
     for (const target of [
       { type: 'country', id: 'india' },
       { type: 'cultural-entry', id: ENTRY_ID },
       { type: 'place', id: PLACE_ID },
+      { type: 'community-post', id: COMMUNITY_POST_ID },
     ]) {
       const saved = await post(baseUrl, '/api/users/me/favourites', target, auth)
       assert.equal(saved.response.status, 201)
@@ -386,7 +538,7 @@ test('favourites support country, published entry, and place; duplicates are ide
       assert.equal(duplicate.response.status, 200)
       assert.equal(duplicate.body.data.alreadySaved, true)
     }
-    assert.equal(UserFavouriteModel.records.length, 3)
+    assert.equal(UserFavouriteModel.records.length, 4)
 
     const collection = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: userHeaders(auth.cookie) })
     const body = await collection.json()
@@ -394,7 +546,19 @@ test('favourites support country, published entry, and place; duplicates are ide
     assert.equal(body.data.countries[0].country.name, 'India')
     assert.deepEqual(body.data.culturalEntries.map((item) => item.id), [ENTRY_ID])
     assert.deepEqual(body.data.places.map((item) => item.id), [PLACE_ID])
+    assert.deepEqual(body.data.communityPosts.map((item) => item.id), [COMMUNITY_POST_ID])
+    assert.equal(body.data.communityPosts[0].url, `/community/posts/${COMMUNITY_POST_ID}`)
+    assert.equal(body.data.communityPosts[0].image.url, 'https://images.example.org/community-post.jpg')
+    assert.equal(JSON.stringify(body.data.communityPosts[0]).includes('publicId'), false)
     assert.equal(JSON.stringify(body).includes('passwordHash'), false)
+
+    const postStatus = await fetch(`${baseUrl}/api/users/me/favourites/community-post/${COMMUNITY_POST_ID}`, { headers: userHeaders(auth.cookie) })
+    assert.equal((await postStatus.json()).data.isSaved, true)
+
+    CommunityPostModel.records[0].status = 'removed'
+    const hiddenCollection = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: userHeaders(auth.cookie) })
+    assert.deepEqual((await hiddenCollection.json()).data.communityPosts, [])
+    CommunityPostModel.records[0].status = 'published'
 
     const status = await fetch(`${baseUrl}/api/users/me/favourites/place/${PLACE_ID}`, { headers: userHeaders(auth.cookie) })
     assert.equal((await status.json()).data.isSaved, true)
@@ -413,11 +577,33 @@ test('favourites support country, published entry, and place; duplicates are ide
     })
     assert.equal(removedEntry.status, 200)
     assert.equal(removedCountry.status, 200)
+    const removedPost = await fetch(`${baseUrl}/api/users/me/favourites/community-post/${COMMUNITY_POST_ID}`, {
+      method: 'DELETE',
+      headers: userHeaders(auth.cookie, auth.csrf),
+    })
+    assert.equal(removedPost.status, 200)
     assert.equal(UserFavouriteModel.records.length, 0)
     const refreshedCollection = await fetch(`${baseUrl}/api/users/me/favourites`, { headers: userHeaders(auth.cookie) })
     const refreshedBody = await refreshedCollection.json()
-    assert.deepEqual(refreshedBody.data, { countries: [], culturalEntries: [], places: [] })
-  })
+    assert.deepEqual(refreshedBody.data, { countries: [], culturalEntries: [], places: [], communityPosts: [] })
+  }, { communityPosts: [
+    { _id: COMMUNITY_POST_ID, author: USER_B, country: COUNTRY_ID, caption: 'A published community story', image: { url: 'https://images.example.org/community-post.jpg', publicId: 'private-storage-id' }, status: 'published', createdAt: new Date() },
+    { _id: '65fabc1234567890abcdef18', author: USER_B, country: COUNTRY_ID, caption: 'A pending community story', status: 'pending_review', createdAt: new Date() },
+  ] })
+})
+
+test('pending community posts cannot be added to a user collection', async () => {
+  await withUserServer(async (baseUrl) => {
+    const account = await register(baseUrl, 'reader@example.org')
+    const result = await post(baseUrl, '/api/users/me/favourites', { type: 'community-post', id: '65fabc1234567890abcdef18' }, {
+      cookie: account.cookie,
+      csrf: account.body.data.csrfToken,
+    })
+    assert.equal(result.response.status, 404)
+    assert.match(result.body.message, /not available to save/i)
+  }, { communityPosts: [
+    { _id: '65fabc1234567890abcdef18', author: USER_B, country: COUNTRY_ID, caption: 'Pending post', status: 'pending_review' },
+  ] })
 })
 
 test('favourites are private to the owner and users cannot access administrator routes', async () => {

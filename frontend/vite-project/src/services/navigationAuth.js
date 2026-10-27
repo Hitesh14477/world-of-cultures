@@ -8,9 +8,9 @@ export function getNavigationAuthView(userAuth, adminAuth) {
     user,
     admin,
     showRegularSignIn: !loading && userAuth?.status === 'ready' && !user && !admin,
-    userError: userAuth?.error || '',
+    userError: admin ? '' : userAuth?.error || '',
     adminError: adminAuth?.error || '',
-    retryUserSession: userAuth?.status === 'error' ? userAuth.retry : null,
+    retryUserSession: !admin && userAuth?.status === 'error' ? userAuth.retry : null,
     retryAdminSession: adminAuth?.status === 'error' ? adminAuth.retry : null,
   }
 }

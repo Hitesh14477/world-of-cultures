@@ -14,7 +14,8 @@
     "iso-3166": "^4.4.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-simple-maps": "^5.0.5"
+    "react-simple-maps": "^5.0.5",
+    "topojson-client": "^3.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

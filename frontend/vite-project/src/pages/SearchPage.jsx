@@ -16,6 +16,7 @@ const CATEGORIES = [
 ]
 const EMPTY_FILTERS = { type: '', country: '', continent: '', region: '', category: '' }
 const EMPTY_PAGINATION = { page: 1, limit: 20, total: 0, totalPages: 0 }
+const populationFormatter = new Intl.NumberFormat()
 
 function getResultUrl(result) {
   const slug = result.country?.slug
@@ -25,30 +26,78 @@ function getResultUrl(result) {
   return `/countries/${encodeURIComponent(slug)}/places/${encodeURIComponent(result.id)}`
 }
 
-function resultTypeLabel(type) {
-  if (type === 'country') return 'Country'
-  if (type === 'cultural-entry') return 'Cultural entry'
-  return 'Place'
+function SearchCountryResult({ country }) {
+  const location = [country.continent, country.subregion || country.region]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join(' · ')
+  const officialName = country.officialName && country.officialName !== country.name
+    ? country.officialName
+    : location || country.name
+  const capital = country.capital?.length ? country.capital.join(', ') : '—'
+  const population = typeof country.population === 'number' && Number.isFinite(country.population)
+    ? populationFormatter.format(country.population)
+    : '—'
+
+  return <article className="global-search-result global-search-record-result global-search-country-result">
+    <a className="global-search-result-link global-search-record-link" href={`/countries/${encodeURIComponent(country.slug)}`}>
+      <div className="global-search-record-image global-search-country-image">
+        <CountryFlag country={country} className="global-search-country-image-flag" />
+      </div>
+      <span className="global-search-record-content">
+        <span className="global-search-result-title">{country.name}<span aria-hidden="true">↗</span></span>
+        <span className="global-search-record-country">
+          <CountryFlag country={country} className="global-search-record-flag" />
+          <span>{officialName}</span>
+        </span>
+        <span className="global-search-record-category">Country profile</span>
+        <span className="global-search-country-facts">
+          <span><span>Capital</span><span>{capital}</span></span>
+          <span><span>Region</span><span>{location || '—'}</span></span>
+          <span><span>Population</span><span>{population}</span></span>
+        </span>
+        <span className="global-search-result-action">Explore Country <span aria-hidden="true">→</span></span>
+      </span>
+    </a>
+  </article>
 }
 
-function SearchResult({ result }) {
+function SearchResult({ result, countries }) {
+  if (result.type === 'country') {
+    const country = countries.find((item) => item.slug === result.id)
+      || { ...result.country, name: result.title, slug: result.id }
+    return <SearchCountryResult country={country} />
+  }
+
+  const isStory = result.type === 'cultural-entry'
+  const actionLabel = isStory ? 'Read Story' : 'Explore Place'
+
   return <article className="global-search-result">
-    <a className="global-search-result-link" href={getResultUrl(result)}>
-      <span className="global-search-result-meta">
-        {result.country && <CountryFlag country={result.country} className="global-search-flag" />}
-        <span>{resultTypeLabel(result.type)}</span>
-        {result.category && <span>{result.category.replaceAll('_', ' ')}</span>}
+    <a className="global-search-result-link global-search-record-link" href={getResultUrl(result)}>
+      <div className="global-search-record-image">
+        {result.image?.url
+          ? <img src={result.image.url} alt={result.image.caption || result.title} loading="lazy" />
+          : <span>Image unavailable</span>}
+      </div>
+      <span className="global-search-record-content">
+        <span className="global-search-result-title">{result.title}<span aria-hidden="true">↗</span></span>
+        <span className="global-search-record-country">
+          {result.country && <CountryFlag country={result.country} className="global-search-record-flag" />}
+          <span>{result.country?.name || 'Country unavailable'}</span>
+        </span>
+        {result.category && <span className="global-search-record-category">{result.category.replaceAll('_', ' ')}</span>}
+        {result.description && <span className="global-search-description">{result.description}</span>}
+        <span className="global-search-result-action">{actionLabel} <span aria-hidden="true">→</span></span>
       </span>
-      <span className="global-search-result-title">{result.title}<span aria-hidden="true">↗</span></span>
-      {result.type !== 'country' && result.country?.name && <span className="global-search-country">{result.country.name}</span>}
-      {result.description && <span className="global-search-description">{result.description}</span>}
     </a>
   </article>
 }
 
 export default function SearchPage() {
   const [query, setQuery] = useState('')
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(() => ({
+    ...EMPTY_FILTERS,
+    type: new URLSearchParams(window.location.search).get('type') === 'cultural-entry' ? 'cultural-entry' : '',
+  }))
   const [page, setPage] = useState(1)
   const [results, setResults] = useState([])
   const [pagination, setPagination] = useState(EMPTY_PAGINATION)
@@ -206,7 +255,7 @@ export default function SearchPage() {
       {searchState === 'empty' && <p className="global-search-feedback">No published results matched. Try another term or adjust the filters.</p>}
       {searchState === 'ready' && <>
         <div className="global-search-result-count">{pagination.total} {pagination.total === 1 ? 'result' : 'results'}</div>
-        <div className="global-search-result-list">{results.map((result) => <SearchResult key={`${result.type}-${result.id}`} result={result} />)}</div>
+        <div className="global-search-result-list">{results.map((result) => <SearchResult key={`${result.type}-${result.id}`} result={result} countries={countries} />)}</div>
         {pagination.totalPages > 1 && <nav className="global-search-pagination" aria-label="Search result pages">
           <button type="button" onClick={() => changePage(page - 1)} disabled={page <= 1}>Previous</button>
           <span>Page {page} of {pagination.totalPages}</span>

@@ -8,6 +8,8 @@ const CommunityPostSchema = new mongoose.Schema({
     publicId: { type: String, required: true, trim: true },
   },
   caption: { type: String, required: true, trim: true, maxlength: 1000 },
+  likesCount: { type: Number, min: 0, default: 0 },
+  commentsCount: { type: Number, min: 0, default: 0 },
   pendingImageCleanupIds: { type: [String], default: [] },
   status: { type: String, enum: ['published', 'pending_review', 'removed'], default: 'published' },
 }, { timestamps: true, strict: 'throw' })

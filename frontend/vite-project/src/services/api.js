@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
+  baseURL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5001/api' : '/api'),
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -74,7 +74,18 @@ export async function adminLogin(credentials) {
 
 export async function fetchAdminSession({ signal } = {}) {
   const response = await apiClient.get('/admin/session', { signal })
+  const memberResponse = await apiClient.get('/admin/member-session', { signal })
+  return { ...response.data?.data, ...memberResponse.data?.data }
+}
+
+export async function fetchAdminOverview({ signal } = {}) {
+  const response = await apiClient.get('/admin/overview', { signal })
   return response.data?.data
+}
+
+export async function fetchAdminUsers(params = {}, { signal } = {}) {
+  const response = await apiClient.get('/admin/users', { params, signal })
+  return { users: response.data?.data || [], pagination: response.data?.pagination }
 }
 
 export async function fetchPendingSubmissions({ signal } = {}) {
@@ -137,7 +148,15 @@ export async function fetchMyProfile({ signal } = {}) {
 }
 
 export async function updateMyProfile(payload, csrfToken) {
-  const response = await apiClient.patch('/users/me/profile', payload, { headers: { 'X-CSRF-Token': csrfToken } })
+  const isFormData = typeof FormData !== 'undefined' && payload instanceof FormData
+  const response = await apiClient.patch('/users/me/profile', payload, {
+    headers: { 'X-CSRF-Token': csrfToken, ...(isFormData ? { 'Content-Type': 'multipart/form-data' } : {}) },
+  })
+  return response.data?.data
+}
+
+export async function checkUsernameAvailability(username, { signal } = {}) {
+  const response = await apiClient.get('/users/me/username-availability', { params: { username }, signal })
   return response.data?.data
 }
 
@@ -156,6 +175,11 @@ export async function fetchCommunityPost(postId, { signal } = {}) {
   return response.data?.data
 }
 
+export async function fetchPublicMemberProfile(username, { signal } = {}) {
+  const response = await apiClient.get(`/users/public/${encodeURIComponent(username)}`, { signal })
+  return response.data?.data
+}
+
 export async function fetchCommunityPosts({ country = '', page = 1, limit = 12, signal } = {}) {
   const response = await apiClient.get('/community', {
     params: { ...(country ? { country } : {}), page, limit },
@@ -169,7 +193,9 @@ export async function fetchCommunityPosts({ country = '', page = 1, limit = 12, 
 
 export async function createCommunityPost(formData, csrfToken, onUploadProgress) {
   const response = await apiClient.post('/community', formData, {
-    headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'multipart/form-data' },
+    // Leave Content-Type unset for browser FormData so Axios/browser can add
+    // the multipart boundary required by Multer.
+    headers: { 'X-CSRF-Token': csrfToken },
     onUploadProgress,
   })
   return response.data?.data
@@ -177,7 +203,7 @@ export async function createCommunityPost(formData, csrfToken, onUploadProgress)
 
 export async function updateCommunityPost(postId, formData, csrfToken, onUploadProgress) {
   const response = await apiClient.patch(`/community/${encodeURIComponent(postId)}`, formData, {
-    headers: { 'X-CSRF-Token': csrfToken, 'Content-Type': 'multipart/form-data' },
+    headers: { 'X-CSRF-Token': csrfToken },
     onUploadProgress,
   })
   return response.data
@@ -187,6 +213,43 @@ export async function deleteCommunityPost(postId, csrfToken) {
   const response = await apiClient.delete(`/community/${encodeURIComponent(postId)}`, {
     headers: { 'X-CSRF-Token': csrfToken },
   })
+  return response.data
+}
+
+export async function moderateCommunityPost(postId, csrfToken) {
+  const response = await apiClient.delete(`/community/moderation/${encodeURIComponent(postId)}`, { headers: { 'X-CSRF-Token': csrfToken } })
+  return response.data
+}
+
+export async function fetchCommunityLikeStatus(postId, { signal } = {}) {
+  const response = await apiClient.get(`/community/${encodeURIComponent(postId)}/likes/status`, { signal })
+  return response.data?.data
+}
+
+export async function setCommunityPostLiked(postId, liked, csrfToken) {
+  const response = await apiClient.request({
+    method: liked ? 'POST' : 'DELETE',
+    url: `/community/${encodeURIComponent(postId)}/likes`,
+    headers: { 'X-CSRF-Token': csrfToken },
+  })
+  return response.data?.data
+}
+
+export async function fetchCommunityComments(postId, { signal } = {}) {
+  const response = await apiClient.get(`/community/${encodeURIComponent(postId)}/comments`, { signal })
+  return Array.isArray(response.data?.data) ? response.data.data : []
+}
+
+export async function createCommunityComment(postId, content, csrfToken) {
+  const response = await apiClient.post(`/community/${encodeURIComponent(postId)}/comments`, { content }, { headers: { 'X-CSRF-Token': csrfToken } })
+  return response.data?.data
+}
+
+export async function deleteCommunityComment(postId, commentId, csrfToken, { admin = false } = {}) {
+  const path = admin
+    ? `/community/moderation/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`
+    : `/community/${encodeURIComponent(postId)}/comments/${encodeURIComponent(commentId)}`
+  const response = await apiClient.delete(path, { headers: { 'X-CSRF-Token': csrfToken } })
   return response.data
 }
 
@@ -204,6 +267,31 @@ export async function removeFavourite(type, id, csrfToken) {
   const response = await apiClient.delete(`/users/me/favourites/${encodeURIComponent(type)}/${encodeURIComponent(id)}`, {
     headers: { 'X-CSRF-Token': csrfToken },
   })
+  return response.data
+}
+
+export async function fetchUnreadNotificationCount({ signal } = {}) {
+  const response = await apiClient.get('/users/me/notifications/unread-count', { signal })
+  return response.data?.data?.unreadCount ?? 0
+}
+
+export async function fetchNotifications({ page = 1, limit = 20, filter = 'all', signal } = {}) {
+  const response = await apiClient.get('/users/me/notifications', { params: { page, limit, filter }, signal })
+  return { notifications: response.data?.data || [], unreadCount: response.data?.unreadCount ?? 0, pagination: response.data?.pagination }
+}
+
+export async function markNotificationRead(id, csrfToken) {
+  const response = await apiClient.patch(`/users/me/notifications/${encodeURIComponent(id)}/read`, {}, { headers: { 'X-CSRF-Token': csrfToken } })
+  return response.data?.data
+}
+
+export async function markAllNotificationsRead(csrfToken) {
+  const response = await apiClient.patch('/users/me/notifications/read-all', {}, { headers: { 'X-CSRF-Token': csrfToken } })
+  return response.data?.data
+}
+
+export async function deleteNotification(id, csrfToken) {
+  const response = await apiClient.delete(`/users/me/notifications/${encodeURIComponent(id)}`, { headers: { 'X-CSRF-Token': csrfToken } })
   return response.data
 }
 

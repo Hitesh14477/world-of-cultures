@@ -5,6 +5,8 @@ import CulturalEntry from '../models/CulturalEntry.js';
 import Place from '../models/Place.js';
 import User from '../models/User.js';
 import { createUserAuth } from '../middleware/userAuth.js';
+import { createAdminAuth } from '../middleware/adminAuth.js';
+import { createMemberAuth } from '../middleware/memberAuth.js';
 import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
 import { communityImageStorage } from '../services/communityImageStorage.js';
@@ -37,18 +39,20 @@ function handleContributionUpload(req, res, next) {
   });
 }
 
-export function createCountryRouter(CountryModel = Country, CulturalEntryModel = CulturalEntry, PlaceModel = Place, { UserModel = User, env = process.env, auth: providedAuth, imageStorage = communityImageStorage } = {}) {
+export function createCountryRouter(CountryModel = Country, CulturalEntryModel = CulturalEntry, PlaceModel = Place, { UserModel = User, env = process.env, auth: providedAuth, adminAuth: providedAdminAuth, memberAuth: providedMemberAuth, imageStorage = communityImageStorage } = {}) {
   const router = Router();
   const controller = createCountryController(CountryModel, CulturalEntryModel, PlaceModel, { imageStorage });
   const auth = providedAuth || createUserAuth({ UserModel, env });
+  const adminAuth = providedAdminAuth || createAdminAuth(env);
+  const memberAuth = providedMemberAuth || createMemberAuth({ userAuth: auth, adminAuth, UserModel });
 
   router.get('/', controller.listCountries);
   // Keep this named route above /:slug so it is handled as a collection endpoint.
   router.get('/continents', controller.listContinents);
   router.get('/:slug/cultural-entries', controller.listCulturalEntries);
-  router.post('/:slug/cultural-entries', auth.requireUser, auth.requireCsrf, handleContributionUpload, controller.submitCulturalEntry);
+  router.post('/:slug/cultural-entries', memberAuth.requireMember, memberAuth.requireCsrf, handleContributionUpload, controller.submitCulturalEntry);
   router.get('/:slug/places', controller.listPlaces);
-  router.post('/:slug/places', auth.requireUser, auth.requireCsrf, handleContributionUpload, controller.submitPlace);
+  router.post('/:slug/places', memberAuth.requireMember, memberAuth.requireCsrf, handleContributionUpload, controller.submitPlace);
   router.get('/:slug', controller.getCountryBySlug);
 
   return router;

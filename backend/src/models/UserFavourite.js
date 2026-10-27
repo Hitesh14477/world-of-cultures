@@ -1,6 +1,6 @@
 import mongoose from 'mongoose'
 
-export const FAVOURITE_TYPES = ['country', 'cultural-entry', 'place']
+export const FAVOURITE_TYPES = ['country', 'cultural-entry', 'place', 'community-post']
 
 const UserFavouriteSchema = new mongoose.Schema({
   user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

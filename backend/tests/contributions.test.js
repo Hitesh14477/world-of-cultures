@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes, scryptSync } from 'node:crypto';
 import { createApp } from '../src/app.js';
 
 const country = { _id: 'country-india-id', slug: 'india' };
@@ -7,6 +8,10 @@ const CONTRIBUTOR_ID = 'contributor-test-id';
 const CONTRIBUTOR_CSRF = 'contribution-test-csrf';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=', 'base64');
 const TEST_IMAGE_STORAGE = { async upload() { return { url: 'https://images.example.test/submission.png', publicId: 'submission' }; }, async remove() {} };
+const ADMIN_ORIGIN = 'http://localhost:5173';
+const ADMIN_PASSWORD = 'contribution admin password 1234';
+const ADMIN_SALT = randomBytes(16);
+const ADMIN_HASH = `scrypt$${ADMIN_SALT.toString('base64url')}$${scryptSync(ADMIN_PASSWORD, ADMIN_SALT, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).toString('base64url')}`;
 
 function contributorHeaders() {
   return { 'Content-Type': 'application/json', Origin: 'http://localhost:5173', 'X-Test-User': CONTRIBUTOR_ID, 'X-CSRF-Token': CONTRIBUTOR_CSRF };
@@ -82,6 +87,33 @@ async function withServer(models, run) {
   }
 }
 
+async function withAdminServer(models, run) {
+  const members = [];
+  const UserModel = {
+    findOne(filter) {
+      return {
+        select() { return this; },
+        lean() { return Promise.resolve(members.find((member) => (filter.adminIdentity ? member.adminIdentity === filter.adminIdentity : filter.username ? member.username === filter.username : false)) || null); },
+      };
+    },
+    async create(document) {
+      const member = { _id: `admin-member-${members.length + 1}`, ...document };
+      members.push(member);
+      return member;
+    },
+  };
+  const server = createApp({
+    ...models,
+    UserModel,
+    userEnv: { USER_SESSION_SECRET: 'contribution-user-session-secret-0123456789', FRONTEND_ORIGIN: ADMIN_ORIGIN },
+    adminEnv: { NODE_ENV: 'test', FRONTEND_ORIGIN: ADMIN_ORIGIN, ADMIN_USERNAME: 'editor', ADMIN_PASSWORD_HASH: ADMIN_HASH, ADMIN_SESSION_SECRET: 'contribution-admin-session-secret-0123456789' },
+  }).listen(0, '127.0.0.1');
+  await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+  const address = server.address();
+  try { await run(`http://127.0.0.1:${address.port}`, members); }
+  finally { await new Promise((resolve) => server.close(resolve)); }
+}
+
 function validEntry(overrides = {}) {
   return {
     title: 'A sourced cultural practice',
@@ -134,6 +166,33 @@ test('POST place with image creates a record using the existing country lookup a
     assert.equal(places.records[0].country, country._id);
     assert.equal(places.records[0].category, 'heritage_site');
     assert.ok(places.records[0].image.url);
+  });
+});
+
+test('administrator session can submit cultural content as a member and it remains pending review', async () => {
+  const entries = fakeCollectionModel();
+  await withAdminServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries, communityImageStorage: TEST_IMAGE_STORAGE }, async (baseUrl, members) => {
+    const login = await fetch(`${baseUrl}/api/admin/login`, {
+      method: 'POST',
+      headers: { Origin: ADMIN_ORIGIN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'editor', password: ADMIN_PASSWORD }),
+    });
+    assert.equal(login.status, 200);
+    const adminCookie = login.headers.get('set-cookie').split(';')[0];
+    const memberResponse = await fetch(`${baseUrl}/api/admin/member-session`, { headers: { Cookie: adminCookie } });
+    const memberData = (await memberResponse.json()).data;
+    const member = memberData.member;
+    const form = contributionForm(validEntry());
+    const response = await fetch(`${baseUrl}/api/countries/india/cultural-entries`, {
+      method: 'POST',
+      headers: { Origin: ADMIN_ORIGIN, Cookie: adminCookie, 'X-CSRF-Token': memberData.csrfToken },
+      body: form,
+    });
+    const body = await response.json();
+    assert.equal(response.status, 201);
+    assert.equal(body.data.reviewStatus, 'pending_review');
+    assert.equal(entries.records[0].submittedBy, member.id);
+    assert.equal(members.length, 1);
   });
 });
 

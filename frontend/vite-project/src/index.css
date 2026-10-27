@@ -4,15 +4,16 @@
   --paper: #F7F5EF;
   --ink: #242722;
   --forest: #315747;
-  --line: #dedbd2;
-  --serif: "Fraunces", Georgia, serif;
+  --line: #d8d5cb;
+  --muted-ink: #5f625a;
   --body: "Inter", Arial, sans-serif;
+  --serif: "Fraunces", Georgia, serif;
   font-family: var(--body);
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: grayscale;
 }
 

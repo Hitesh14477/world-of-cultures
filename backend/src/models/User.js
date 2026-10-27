@@ -12,6 +12,11 @@ const UserSchema = new mongoose.Schema({
   },
   displayName: { type: String, trim: true, maxlength: 60, default: '' },
   bio: { type: String, trim: true, maxlength: 240, default: '' },
+  avatarUrl: { type: String, trim: true, maxlength: 2048, match: /^(?:https:\/\/\S+)?$/i },
+  avatarPublicId: { type: String, trim: true, maxlength: 255, select: false },
+  // Stable, server-managed identity for the separate administrator account's community profile.
+  // It is never accepted by public registration or profile-update payloads.
+  adminIdentity: { type: String, select: false },
   email: {
     type: String,
     required: true,
@@ -39,6 +44,7 @@ UserSchema.index({ username: 1 }, {
   unique: true,
   partialFilterExpression: { username: { $type: 'string' } },
 })
+UserSchema.index({ adminIdentity: 1 }, { unique: true, sparse: true })
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema)
 

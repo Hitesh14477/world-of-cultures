@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import CountryFlag from '../components/CountryFlag.jsx'
-import { fetchMyCommunityPosts, fetchMyContributions, fetchMyFavourites, fetchMyProfile, removeFavourite, updateMyProfile } from '../services/api.js'
+import { checkUsernameAvailability, fetchMyCommunityPosts, fetchMyContributions, fetchMyFavourites, fetchMyProfile, removeFavourite, updateMyProfile } from '../services/api.js'
 
 const TABS = ['Overview', 'My Favourites', 'My Contributions', 'My Community Posts', 'Settings']
+const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+const PROFILE_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 function displayDate(value) {
   const date = new Date(value)
@@ -13,24 +15,87 @@ function ProfileSettings({ profile, csrfToken, onSaved }) {
   const [username, setUsername] = useState(profile.username || '')
   const [displayName, setDisplayName] = useState(profile.displayName || '')
   const [bio, setBio] = useState(profile.bio || '')
+  const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl || '')
+  const [avatarFile, setAvatarFile] = useState(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
+  const [avatarError, setAvatarError] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [availability, setAvailability] = useState({ username: '', status: 'idle', message: '' })
+  const availabilityRequest = useRef(0)
+  const normalizedUsername = username.trim().toLowerCase()
+  const originalUsername = (profile.username || '').trim().toLowerCase()
+  const usernameValid = /^[a-z0-9_]{3,24}$/.test(normalizedUsername)
+  const usernameUnchanged = normalizedUsername === originalUsername
+  const availabilityMatches = availability.username === normalizedUsername
+  const availabilityStatus = !usernameValid ? 'idle' : usernameUnchanged ? 'unchanged' : availabilityMatches ? availability.status : 'checking'
+  const canSaveUsername = usernameValid && (usernameUnchanged || (availabilityMatches && availability.status === 'available'))
+
+  useEffect(() => () => { if (avatarPreview) URL.revokeObjectURL(avatarPreview) }, [avatarPreview])
+
+  useEffect(() => {
+    if (!editing || !usernameValid || usernameUnchanged) return undefined
+    const requestId = ++availabilityRequest.current
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      setAvailability({ username: normalizedUsername, status: 'checking', message: '' })
+      checkUsernameAvailability(normalizedUsername, { signal: controller.signal }).then((result) => {
+        if (controller.signal.aborted || requestId !== availabilityRequest.current) return
+        setAvailability({ username: normalizedUsername, status: result?.available ? 'available' : 'taken', message: '' })
+      }).catch((error) => {
+        if (controller.signal.aborted || requestId !== availabilityRequest.current) return
+        setAvailability({ username: normalizedUsername, status: 'error', message: error.response?.data?.message || 'Username availability could not be checked. Try again.' })
+      })
+    }, 350)
+    return () => { window.clearTimeout(timer); controller.abort() }
+  }, [editing, usernameValid, usernameUnchanged, normalizedUsername])
+
+  function cancel() {
+    setUsername(profile.username || '')
+    setDisplayName(profile.displayName || '')
+    setBio(profile.bio || '')
+    setAvatarUrl(profile.avatarUrl || '')
+    setAvatarFile(null)
+    setAvatarPreview('')
+    setAvatarError('')
+    setAvailability({ username: '', status: 'idle', message: '' })
+    setMessage('')
+    setIsError(false)
+    setEditing(false)
+  }
 
   async function submit(event) {
     event.preventDefault()
     if (busy) return
-    if (!/^[a-z0-9_]{3,24}$/i.test(username.trim())) {
+    if (!usernameValid) {
       setIsError(true)
       setMessage('Username must be 3–24 characters using letters, numbers, or underscores.')
       return
     }
+    if (!canSaveUsername) return
     setBusy(true)
     setMessage('')
     try {
-      const updated = await updateMyProfile({ username: username.trim(), displayName, bio }, csrfToken)
+      const payload = avatarFile ? new FormData() : { username: normalizedUsername, displayName, bio, avatarUrl }
+      if (avatarFile) {
+        payload.append('username', normalizedUsername)
+        payload.append('displayName', displayName)
+        payload.append('bio', bio)
+        payload.append('avatar', avatarFile)
+      }
+      const updated = await updateMyProfile(payload, csrfToken)
+      setUsername(updated.username || normalizedUsername)
+      setDisplayName(updated.displayName || '')
+      setBio(updated.bio || '')
+      setAvatarUrl(updated.avatarUrl || '')
+      setAvatarFile(null)
+      setAvatarPreview('')
+      setAvatarError('')
+      setAvailability({ username: updated.username || normalizedUsername, status: 'unchanged', message: '' })
       onSaved(updated)
-      setMessage('Your profile was updated.')
+      setMessage('Profile updated successfully.')
       setIsError(false)
     } catch (error) {
       setMessage(error.response?.data?.message || 'Your profile could not be updated. Please try again.')
@@ -38,14 +103,58 @@ function ProfileSettings({ profile, csrfToken, onSaved }) {
     } finally { setBusy(false) }
   }
 
-  return <form className="profile-settings" onSubmit={submit}>
-    <label>Username<input required minLength="3" maxLength="24" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} /></label>
-    <label>Display name <span>(optional)</span><input maxLength="60" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-    <label>Bio <span>(optional)</span><textarea rows="4" maxLength="240" value={bio} onChange={(event) => setBio(event.target.value)} /></label>
-    <p className="profile-private-note">Your email address and account details are visible only to you.</p>
-    {message && <p className={isError ? 'profile-error' : 'profile-success'} role={isError ? 'alert' : 'status'}>{message}</p>}
-    <button className="primary-button" type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save profile'}</button>
-  </form>
+  function chooseAvatar(event) {
+    const file = event.target.files?.[0] || null
+    setAvatarError('')
+    if (!file) return
+    if (!PROFILE_IMAGE_TYPES.has(file.type)) {
+      setAvatarFile(null)
+      setAvatarPreview('')
+      setAvatarError('Choose a JPEG, PNG, or WebP image.')
+      event.target.value = ''
+      return
+    }
+    if (file.size === 0 || file.size > PROFILE_IMAGE_MAX_BYTES) {
+      setAvatarFile(null)
+      setAvatarPreview('')
+      setAvatarError('Choose an image larger than 0 bytes and no bigger than 5 MB.')
+      event.target.value = ''
+      return
+    }
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
+
+  return <div className="profile-settings-wrap">
+    {!editing && <><button className="primary-button" type="button" onClick={() => { setEditing(true); setMessage('') }}>Update Profile</button>{message && <p className={isError ? 'profile-error' : 'profile-success'} role={isError ? 'alert' : 'status'}>{message}</p>}</>}
+    {editing && <form className="profile-settings" onSubmit={submit}>
+      <label>Username<input required minLength="3" maxLength="24" autoComplete="username" value={username} aria-describedby="profile-username-status" onChange={(event) => { setUsername(event.target.value); setMessage('') }} /></label>
+      <p id="profile-username-status" className={`profile-availability profile-availability-${availabilityStatus}`} aria-live="polite">
+        {availabilityStatus === 'unchanged' ? 'This is your current username.'
+          : !usernameValid ? 'Use 3–24 letters, numbers, or underscores.'
+            : availabilityStatus === 'checking' ? 'Checking username availability…'
+              : availabilityStatus === 'available' ? 'Username is available.'
+                : availabilityStatus === 'taken' ? 'This username is already taken.'
+                  : availability.message}
+      </p>
+      <label>Display name <span>(optional)</span><input maxLength="60" value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
+      <div className="profile-image-options">
+        <strong>Profile picture</strong>
+        <p>Choose an image from your device, or use a secure image URL.</p>
+        <label className="profile-image-upload"><span>{avatarFile ? 'Choose a different photo' : 'Choose a photo from your device'}</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatar} aria-label="Upload a JPEG, PNG, or WebP profile picture" disabled={busy} /></label>
+        <small>JPEG, PNG, or WebP · up to 5 MB. The image uploads when you save your profile.</small>
+        {avatarError && <p className="profile-error" role="alert">{avatarError}</p>}
+        {avatarFile && <button className="profile-remove-avatar-file" type="button" onClick={() => { setAvatarFile(null); setAvatarPreview(''); setAvatarError('') }} disabled={busy}>Remove selected photo</button>}
+        <label>Or paste a profile picture URL <span>(optional, HTTPS)</span><input type="url" inputMode="url" maxLength="2048" placeholder="https://…" value={avatarUrl} onChange={(event) => { setAvatarUrl(event.target.value); setAvatarError(''); if (event.target.value) { setAvatarFile(null); setAvatarPreview('') } }} disabled={busy && Boolean(avatarFile)} /></label>
+        {avatarUrl.trim() && !/^https:\/\//i.test(avatarUrl.trim()) && <p className="profile-error" role="alert">Profile pictures must use a valid HTTPS URL.</p>}
+        {(avatarPreview || (avatarUrl && /^https:\/\//i.test(avatarUrl.trim()))) && <img className="profile-settings-avatar-preview" src={avatarPreview || avatarUrl.trim()} alt="Profile picture preview" />}
+      </div>
+      <label>Bio <span>(optional)</span><textarea rows="4" maxLength="240" value={bio} onChange={(event) => setBio(event.target.value)} /></label>
+      <p className="profile-private-note">Your email address and account details are visible only to you.</p>
+      {message && <p className={isError ? 'profile-error' : 'profile-success'} role={isError ? 'alert' : 'status'}>{message}</p>}
+      <div className="profile-settings-actions"><button className="primary-button" type="submit" disabled={busy || !canSaveUsername || Boolean(avatarUrl.trim() && !/^https:\/\//i.test(avatarUrl.trim()))}>{busy ? avatarFile ? 'Uploading photo…' : 'Saving…' : 'Save Changes'}</button><button className="profile-cancel-button" type="button" onClick={cancel} disabled={busy}>Cancel</button></div>
+    </form>}
+  </div>
 }
 
 function ContributionList({ items }) {
@@ -68,9 +177,14 @@ function CommunityGrid({ items }) {
 }
 
 export default function AccountProfilePage({ auth }) {
-  const [tab, setTab] = useState('Overview')
+  const [tab, setTab] = useState(() => {
+    try {
+      const requested = decodeURIComponent(window.location.hash.slice(1))
+      return TABS.includes(requested) ? requested : 'Overview'
+    } catch { return 'Overview' }
+  })
   const [profile, setProfile] = useState(null)
-  const [favourites, setFavourites] = useState({ countries: [], culturalEntries: [], places: [] })
+  const [favourites, setFavourites] = useState({ countries: [], culturalEntries: [], places: [], communityPosts: [] })
   const [contributions, setContributions] = useState([])
   const [posts, setPosts] = useState([])
   const [contributionPagination, setContributionPagination] = useState({ page: 1, totalPages: 1 })
@@ -92,8 +206,9 @@ export default function AccountProfilePage({ auth }) {
       fetchMyCommunityPosts({ signal: controller.signal }),
     ]).then(([nextProfile, nextFavourites, nextContributions, nextPosts]) => {
       if (controller.signal.aborted) return
-      setProfile(nextProfile)
-      setFavourites(nextFavourites || { countries: [], culturalEntries: [], places: [] })
+      // The API keeps private account fields under `user` and activity counts beside it.
+      setProfile({ ...(nextProfile?.user || {}), counts: nextProfile?.counts || {} })
+      setFavourites(nextFavourites || { countries: [], culturalEntries: [], places: [], communityPosts: [] })
       setContributions(nextContributions?.data || [])
       setPosts(nextPosts?.data || [])
       setContributionPagination(nextContributions?.pagination || { page: 1, totalPages: 1 })
@@ -107,7 +222,7 @@ export default function AccountProfilePage({ auth }) {
     return () => controller.abort()
   }, [auth.csrfToken, retry])
 
-  const allFavourites = useMemo(() => [...(favourites.countries || []), ...(favourites.culturalEntries || []), ...(favourites.places || [])], [favourites])
+  const allFavourites = useMemo(() => [...(favourites.countries || []), ...(favourites.culturalEntries || []), ...(favourites.places || []), ...(favourites.communityPosts || [])], [favourites])
   async function loadMore(kind) {
     const pagination = kind === 'contributions' ? contributionPagination : postPagination
     if (moreLoading || pagination.page >= pagination.totalPages) return
@@ -135,7 +250,7 @@ export default function AccountProfilePage({ auth }) {
     setCollectionMessage('')
     try {
       await removeFavourite(item.type, item.id, auth.csrfToken)
-      const section = item.type === 'country' ? 'countries' : item.type === 'place' ? 'places' : 'culturalEntries'
+      const section = item.type === 'country' ? 'countries' : item.type === 'place' ? 'places' : item.type === 'community-post' ? 'communityPosts' : 'culturalEntries'
       setFavourites((current) => ({ ...current, [section]: current[section].filter((saved) => saved.id !== item.id) }))
       setCollectionMessage('Removed from your favourites.')
     } catch (requestError) {
@@ -150,25 +265,25 @@ export default function AccountProfilePage({ auth }) {
   const counts = profile.counts || { favourites: allFavourites.length, contributions: contributions.length, communityPosts: posts.length }
   return <main className="profile-page">
     <header className="profile-header">
-      <div className="profile-avatar" aria-label="Default profile avatar">{initials}</div>
-      <div className="profile-heading-copy"><p className="eyebrow">Your World of Cultures account</p><h1>{profile.displayName || profile.username || 'Your profile'}</h1><p>@{profile.username || 'member'}{profile.createdAt ? ` · Joined ${displayDate(profile.createdAt)}` : ''}</p></div>
-      <button className="profile-signout" type="button" onClick={auth.logout} disabled={auth.logoutBusy}>{auth.logoutBusy ? 'Signing out…' : 'Sign out'}</button>
+      <div className="profile-avatar" aria-label={profile.avatarUrl ? `${profile.username || 'Your'} profile picture` : 'Default profile avatar'}>{profile.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : initials}</div>
+      <div className="profile-heading-copy"><p className="eyebrow">Your World of Cultures account</p><h1>@{profile.username || 'Account'}</h1>{profile.displayName && <p className="profile-display-name">{profile.displayName}</p>}<p>{profile.createdAt ? `Joined ${displayDate(profile.createdAt)}` : 'Account profile'}</p></div>
+      <button className="profile-signout logout-control" type="button" onClick={auth.logout} disabled={auth.logoutBusy}>{auth.logoutBusy ? 'Logging out…' : 'Log out'}</button>
     </header>
     <nav className="profile-tabs" aria-label="Profile sections" role="tablist">{TABS.map((label) => <button key={label} type="button" role="tab" aria-selected={tab === label} onClick={() => setTab(label)}>{label}</button>)}</nav>
     {tab === 'Overview' && <section className="profile-overview" role="tabpanel">
       <div className="profile-counts">{[['Favourites', counts.favourites], ['Contributions', counts.contributions], ['Community posts', counts.communityPosts]].map(([label, count]) => <div key={label}><strong>{count}</strong><span>{label}</span></div>)}</div>
-      <div className="profile-overview-columns"><section><header><h2>Recently saved</h2><button type="button" onClick={() => setTab('My Favourites')}>View all</button></header>{allFavourites.slice(0, 4).map((item) => <a className="profile-recent-item" href={item.type === 'country' ? `/countries/${item.id}` : item.type === 'place' ? `/countries/${item.country?.slug}/places/${item.id}` : `/countries/${item.country?.slug}/cultural-entries/${item.id}`} key={`${item.type}-${item.id}`}>{item.country && <CountryFlag country={item.country} />}<span>{item.title}</span></a>)}{allFavourites.length === 0 && <p className="profile-empty">Nothing saved yet.</p>}</section>
+      <div className="profile-overview-columns"><section><header><h2>Recently saved</h2><button type="button" onClick={() => setTab('My Favourites')}>View all</button></header>{allFavourites.slice(0, 4).map((item) => <a className="profile-recent-item" href={item.type === 'country' ? `/countries/${item.id}` : item.type === 'community-post' ? `/community/posts/${encodeURIComponent(item.id)}` : item.type === 'place' ? `/countries/${item.country?.slug}/places/${item.id}` : `/countries/${item.country?.slug}/cultural-entries/${item.id}`} key={`${item.type}-${item.id}`}>{item.country && <CountryFlag country={item.country} />}<span>{item.title}</span></a>)}{allFavourites.length === 0 && <p className="profile-empty">Nothing saved yet.</p>}</section>
         <section><header><h2>Recent contributions</h2><button type="button" onClick={() => setTab('My Contributions')}>View all</button></header><ContributionList items={contributions.slice(0, 3)} /></section></div>
       <section className="profile-overview-posts"><header><h2>Recent Community posts</h2><button type="button" onClick={() => setTab('My Community Posts')}>View all</button></header><CommunityGrid items={posts.slice(0, 3)} /></section>
     </section>}
-    {tab === 'My Favourites' && <section className="profile-section" role="tabpanel"><h2>My Favourites</h2><p>Saved countries, cultural entries, and places.</p>{collectionMessage && <p className="profile-success" role="status">{collectionMessage}</p>}{allFavourites.length === 0 && <p className="profile-empty">No account favourites yet. <a href="/countries">Browse countries</a></p>}<div className="profile-favourite-grid">{allFavourites.map((item) => <article key={`${item.type}-${item.id}`}>
+    {tab === 'My Favourites' && <section className="profile-section" role="tabpanel"><h2>My Favourites</h2><p>Saved countries, cultural entries, places, and Community posts.</p>{collectionMessage && <p className="profile-success" role="status">{collectionMessage}</p>}{allFavourites.length === 0 && <p className="profile-empty">No account favourites yet. <a href="/countries">Browse countries</a></p>}<div className="profile-favourite-grid">{allFavourites.map((item) => <article key={`${item.type}-${item.id}`}>
       {item.country && <CountryFlag country={item.country} />}
       <small>{item.type === 'country' ? 'Country' : `${item.country?.name || 'Country'} · ${item.category || item.type}`}</small>
-      <a href={item.type === 'country' ? `/countries/${encodeURIComponent(item.id)}` : item.type === 'place' ? `/countries/${encodeURIComponent(item.country?.slug || '')}/places/${encodeURIComponent(item.id)}` : `/countries/${encodeURIComponent(item.country?.slug || '')}/cultural-entries/${encodeURIComponent(item.id)}`}>{item.title} ↗</a>
+      <a href={item.type === 'country' ? `/countries/${encodeURIComponent(item.id)}` : item.type === 'community-post' ? `/community/posts/${encodeURIComponent(item.id)}` : item.type === 'place' ? `/countries/${encodeURIComponent(item.country?.slug || '')}/places/${encodeURIComponent(item.id)}` : `/countries/${encodeURIComponent(item.country?.slug || '')}/cultural-entries/${encodeURIComponent(item.id)}`}>{item.title} ↗</a>
       <button type="button" onClick={() => removeSaved(item)} disabled={removing === `${item.type}:${item.id}`}>{removing === `${item.type}:${item.id}` ? 'Removing…' : 'Remove'}</button>
     </article>)}</div><a className="profile-section-link" href="/my-collection">Open full collection →</a></section>}
     {tab === 'My Contributions' && <section className="profile-section" role="tabpanel"><h2>My Contributions</h2><ContributionList items={contributions} />{contributionPagination.page < contributionPagination.totalPages && <button className="profile-more-button" type="button" onClick={() => loadMore('contributions')} disabled={Boolean(moreLoading)}>{moreLoading === 'contributions' ? 'Loading…' : 'Load more contributions'}</button>}{moreError && <p className="profile-error" role="alert">{moreError}</p>}<a className="profile-section-link" href="/contribute">Submit a contribution →</a></section>}
     {tab === 'My Community Posts' && <section className="profile-section" role="tabpanel"><h2>My Community Posts</h2><CommunityGrid items={posts} />{postPagination.page < postPagination.totalPages && <button className="profile-more-button" type="button" onClick={() => loadMore('posts')} disabled={Boolean(moreLoading)}>{moreLoading === 'posts' ? 'Loading…' : 'Load more posts'}</button>}{moreError && <p className="profile-error" role="alert">{moreError}</p>}</section>}
-    {tab === 'Settings' && <section className="profile-section" role="tabpanel"><h2>Settings</h2><p className="profile-email">Email · {profile.email}</p><ProfileSettings profile={profile} csrfToken={auth.csrfToken} onSaved={(updated) => { setProfile(updated); auth.updateUser(updated) }} /></section>}
+    {tab === 'Settings' && <section className="profile-section" role="tabpanel"><h2>Settings</h2>{profile.email && <p className="profile-email">Email · {profile.email}</p>}<ProfileSettings profile={profile} csrfToken={auth.csrfToken} onSaved={(updated) => { setProfile((current) => ({ ...current, ...updated })); auth.updateUser(updated) }} /></section>}
   </main>
 }

@@ -27,10 +27,12 @@ test('a regular-user session is distinct from administrator authentication', () 
 
 test('an administrator session shows review navigation without regular-user sign-in controls', () => {
   const session = { username: 'editor', csrfToken: 'test-only' }
-  const view = getNavigationAuthView(signedOutUser, { status: 'ready', session })
+  const view = getNavigationAuthView({ ...signedOutUser, status: 'error', error: 'Regular sessions are unavailable.' }, { status: 'ready', session })
   assert.equal(view.admin, session)
   assert.equal(view.user, null)
   assert.equal(view.showRegularSignIn, false)
+  assert.equal(view.userError, '')
+  assert.equal(view.retryUserSession, null)
 })
 
 test('a session-check error remains visible and does not convert an unknown session into signed-out controls', () => {

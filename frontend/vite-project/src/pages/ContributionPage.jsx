@@ -81,10 +81,30 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
 
   const isEntry = kind === 'entry'
   const categories = isEntry ? ENTRY_CATEGORIES : PLACE_TYPES
+  const selectedCountry = countries.find((country) => country.slug === values.countrySlug)
+  const selectedCategory = categories.find(([value]) => value === values.category)?.[1]
+  const requiredTitle = (isEntry ? values.title : values.name).trim()
+  const requiredDescription = (isEntry ? values.content : values.description).trim()
+  const missingRequired = [
+    !selectedCountry && 'Choose a country.',
+    !selectedCategory && `Choose a ${isEntry ? 'cultural category' : 'place type'}.`,
+    !requiredTitle && `Add a ${isEntry ? 'title' : 'place name'}.`,
+    !requiredDescription && 'Write the information you want to share.',
+    !imageFile && 'Add a photograph.',
+    values.sources.some((source) => !(source.title.trim() && source.publisher.trim() && source.url.trim())) && 'Complete the title, publisher, and URL for each source.',
+  ].filter(Boolean)
 
   useEffect(() => () => {
     if (imagePreview) URL.revokeObjectURL(imagePreview)
   }, [imagePreview])
+
+  useEffect(() => {
+    if (notice?.type !== 'success') return undefined
+    const timeout = window.setTimeout(() => {
+      setNotice((current) => current?.type === 'success' ? null : current)
+    }, 3000)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
 
   function updateField(field, value) {
     setValues((current) => ({ ...current, [field]: value }))
@@ -167,24 +187,32 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
     </div>}
     <fieldset className="contribution-fields" disabled={submitting}>
       <legend className="sr-only">{isEntry ? 'Cultural entry submission' : 'Place submission'}</legend>
-      {fixedCountry
-        ? <div className="contribution-locked-value"><span>Country</span><strong>{fixedCountry.name}</strong></div>
-        : <label>Country<select required value={values.countrySlug} onChange={(event) => updateField('countrySlug', event.target.value)}>
-        <option value="">Choose a country</option>
-        {countries.map((country) => <option value={country.slug} key={country.slug}>{country.name}</option>)}
-      </select></label>}
-      <label>{isEntry ? 'Entry title' : 'Place name'}<input required maxLength={180} value={isEntry ? values.title : values.name} onChange={(event) => updateField(isEntry ? 'title' : 'name', event.target.value)} /></label>
-      {fixedCategory
-        ? <div className="contribution-locked-value"><span>{isEntry ? 'Cultural category' : 'Place type'}</span><strong>{categories.find(([value]) => value === fixedCategory)?.[1] || 'Selected section'}</strong></div>
-        : <label>{isEntry ? 'Cultural category' : 'Place type'}<select required value={values.category} onChange={(event) => updateField('category', event.target.value)}>
-        <option value="" disabled>Choose a category</option>
-        {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select></label>}
-      {isEntry && <label>Short summary <span className="form-optional">(optional)</span><textarea rows="3" maxLength={600} value={values.summary} onChange={(event) => updateField('summary', event.target.value)} /></label>}
-      {!isEntry && <label>Location <span className="form-optional">(optional)</span><input maxLength={200} value={values.location} onChange={(event) => updateField('location', event.target.value)} placeholder="City or region" /></label>}
-      <label>{isEntry ? 'Region' : 'Cultural region'} <span className="form-optional">(optional)</span><input maxLength={160} value={values.region} onChange={(event) => updateField('region', event.target.value)} /></label>
-      <label className="form-span">{isEntry ? 'Description' : 'Place description'}<textarea required rows="7" maxLength={isEntry ? 20000 : 5000} value={isEntry ? values.content : values.description} onChange={(event) => updateField(isEntry ? 'content' : 'description', event.target.value)} /></label>
-      <label className="form-span">Photograph <span className="required-marker" aria-hidden="true">*</span> <span className="form-optional">(JPEG, PNG, or WebP · up to 5 MB)</span>
+      <section className="contribution-step">
+        <header className="contribution-step-heading"><span>Step 1 of 4</span><h2>Choose a country and topic</h2><p>Tell us where this contribution belongs.</p></header>
+        <div className="contribution-step-grid">
+          {fixedCountry
+            ? <div className="contribution-locked-value"><span>Country</span><strong>{fixedCountry.name}</strong></div>
+            : <label>Country<select required value={values.countrySlug} onChange={(event) => updateField('countrySlug', event.target.value)}>
+            <option value="">Choose a country</option>
+            {countries.map((country) => <option value={country.slug} key={country.slug}>{country.name}</option>)}
+          </select></label>}
+          {fixedCategory
+            ? <div className="contribution-locked-value"><span>{isEntry ? 'Cultural category' : 'Place type'}</span><strong>{categories.find(([value]) => value === fixedCategory)?.[1] || 'Selected section'}</strong></div>
+            : <label>{isEntry ? 'Cultural category' : 'Place type'}<select required value={values.category} onChange={(event) => updateField('category', event.target.value)}>
+            <option value="" disabled>Choose a category</option>
+            {categories.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select></label>}
+        </div>
+      </section>
+      <section className="contribution-step">
+        <header className="contribution-step-heading"><span>Step 2 of 4</span><h2>Write and add a photograph</h2><p>Share your own clear, respectful description. A photograph is required.</p></header>
+        <div className="contribution-step-grid">
+          <label className="form-span">{isEntry ? 'Entry title' : 'Place name'}<input required maxLength={180} value={isEntry ? values.title : values.name} onChange={(event) => updateField(isEntry ? 'title' : 'name', event.target.value)} placeholder={isEntry ? 'Give this cultural entry a clear title' : 'Name the place'} /></label>
+          {isEntry && <label className="form-span">Short summary <span className="form-optional">(optional)</span><textarea rows="3" maxLength={600} value={values.summary} onChange={(event) => updateField('summary', event.target.value)} placeholder="A brief introduction to the information below" /></label>}
+          {!isEntry && <label>Location <span className="form-optional">(optional)</span><input maxLength={200} value={values.location} onChange={(event) => updateField('location', event.target.value)} placeholder="City or region" /></label>}
+          <label>{isEntry ? 'Region' : 'Cultural region'} <span className="form-optional">(optional)</span><input maxLength={160} value={values.region} onChange={(event) => updateField('region', event.target.value)} placeholder="Add a region if relevant" /></label>
+          <label className="form-span">{isEntry ? 'Information' : 'Place description'}<textarea required rows="7" maxLength={isEntry ? 20000 : 5000} value={isEntry ? values.content : values.description} onChange={(event) => updateField(isEntry ? 'content' : 'description', event.target.value)} placeholder="Write what you know and explain regional context where relevant." /></label>
+          <label className="form-span">Photograph <span className="required-marker" aria-hidden="true">*</span> <span className="form-optional">(JPEG, PNG, or WebP · up to 5 MB)</span>
         <span className="form-help">An image is required for every submission. Share only an image you own or have permission to use.</span>
         <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" required={!imageFile} aria-invalid={Boolean(imageError)} aria-describedby="contribution-image-help" aria-errormessage={imageError ? 'contribution-image-error' : undefined} onInvalid={() => setImageError('An image is required for every submission.')} onChange={(event) => {
           const selected = event.target.files?.[0] || null
@@ -197,16 +225,31 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
         }} />
         <span id="contribution-image-help" className="sr-only">Required image, JPEG PNG or WebP, maximum 5 megabytes.</span>
       </label>
-      {imageError && <p id="contribution-image-error" className="form-image-error form-span" role="alert">{imageError}</p>}
-      {imageFile && <>
-        <label className="form-span">Image caption <span className="form-optional">(optional)</span><input maxLength={240} value={values.imageCaption || ''} onChange={(event) => updateField('imageCaption', event.target.value)} /></label>
-        <label className="form-span image-rights-confirm"><input type="checkbox" checked={Boolean(values.imageRightsConfirmed)} onChange={(event) => updateField('imageRightsConfirmed', event.target.checked)} /> I own this image or have permission to share it.</label>
-        {imagePreview && <img className="contribution-image-preview form-span" src={imagePreview} alt="Preview of selected contribution image" />}
-        <p className="form-help form-span">To replace this image, choose another file above.</p>
-        <button className="form-text-button form-span" type="button" onClick={() => { setImagePreview(''); setImageFile(null); if (imageInputRef.current) imageInputRef.current.value = ''; setValues((current) => ({ ...current, imageCaption: '', imageRightsConfirmed: false })) }}>Remove selected image</button>
-      </>}
+          {imageError && <p id="contribution-image-error" className="form-image-error form-span" role="alert">{imageError}</p>}
+          {imageFile && <>
+            <label className="form-span">Image caption <span className="form-optional">(optional)</span><input maxLength={240} value={values.imageCaption || ''} onChange={(event) => updateField('imageCaption', event.target.value)} /></label>
+            <label className="form-span image-rights-confirm"><input type="checkbox" checked={Boolean(values.imageRightsConfirmed)} onChange={(event) => updateField('imageRightsConfirmed', event.target.checked)} /> I own this image or have permission to share it.</label>
+            {imagePreview && <img className="contribution-image-preview form-span" src={imagePreview} alt="Preview of selected contribution image" />}
+            <p className="form-help form-span">To replace this image, choose another file above.</p>
+            <button className="form-text-button form-span" type="button" onClick={() => { setImagePreview(''); setImageFile(null); if (imageInputRef.current) imageInputRef.current.value = ''; setValues((current) => ({ ...current, imageCaption: '', imageRightsConfirmed: false })) }}>Remove selected image</button>
+          </>}
+        </div>
+      </section>
     </fieldset>
-    <SourceFields sources={values.sources} onChange={updateSource} onAdd={addSource} onRemove={removeSource} disabled={submitting} />
+    <section className="contribution-step contribution-source-step">
+      <header className="contribution-step-heading"><span>Step 3 of 4</span><h2>Add your sources</h2><p>Give reviewers enough detail to check the information. Do not assume a web page grants reuse rights.</p></header>
+      <SourceFields sources={values.sources} onChange={updateSource} onAdd={addSource} onRemove={removeSource} disabled={submitting} />
+    </section>
+    <section className="contribution-step contribution-review-step" aria-labelledby="contribution-review-heading">
+      <header className="contribution-step-heading"><span>Step 4 of 4</span><h2 id="contribution-review-heading">Review before submitting</h2><p>Check the country, topic, information, photograph, and source details below.</p></header>
+      <div className="contribution-review-summary">
+        <dl><div><dt>Country</dt><dd>{selectedCountry?.name || 'Not selected'}</dd></div><div><dt>{isEntry ? 'Topic' : 'Place type'}</dt><dd>{selectedCategory || 'Not selected'}</dd></div><div><dt>{isEntry ? 'Title' : 'Place'}</dt><dd>{requiredTitle || 'Not added'}</dd></div><div><dt>Photograph</dt><dd>{imageFile?.name || 'Not added'}</dd></div><div><dt>Sources</dt><dd>{values.sources.filter((source) => source.title.trim() && source.publisher.trim() && source.url.trim()).length} complete</dd></div></dl>
+        {imagePreview && <img src={imagePreview} alt="Selected contribution photograph preview" />}
+      </div>
+      {missingRequired.length > 0
+        ? <div className="contribution-required-summary" role="status"><strong>Before you submit</strong><p>Complete these required details:</p><ul>{missingRequired.map((item) => <li key={item}>{item}</li>)}</ul></div>
+        : <p className="contribution-ready-summary" role="status">The required details are in place. Your submission will be reviewed before it can appear publicly.</p>}
+    </section>
     <p className="submission-review-note">Submissions should be accurate, culturally respectful, and supported by reliable sources. Every contribution is reviewed; submission does not mean it will be published.</p>
     <button className="contribution-submit" type="submit" disabled={submitting}>
       {submitting ? 'Submitting…' : 'Submit for review'}<span aria-hidden="true">→</span>

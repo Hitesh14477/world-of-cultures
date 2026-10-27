@@ -52,7 +52,7 @@ function parsePasswordHash(value) {
 function cookieOptions(env, maxAge = SESSION_SECONDS) {
   const options = [
     `${COOKIE_NAME}=`,
-    'Path=/api/admin',
+    'Path=/api',
     'HttpOnly',
     'SameSite=Strict',
     `Max-Age=${maxAge}`,
@@ -82,7 +82,9 @@ export function createAdminAuth(env = process.env) {
   }
 
   function issueCookie(res, session) {
-    res.setHeader('Set-Cookie', `${cookieOptions(env).replace(`${COOKIE_NAME}=`, `${COOKIE_NAME}=${createSessionToken(session, sessionSecret)}`)}`)
+    const cookie = cookieOptions(env).replace(`${COOKIE_NAME}=`, `${COOKIE_NAME}=${createSessionToken(session, sessionSecret)}`)
+    const legacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    res.setHeader('Set-Cookie', [cookie, legacyCookie])
   }
 
   function requireAdmin(req, res, next) {
@@ -155,12 +157,14 @@ export function createAdminAuth(env = process.env) {
   }
 
   function currentSession(req, res) {
-    return res.json({ success: true, data: { username: req.adminSession.username, csrfToken: req.adminSession.csrf } })
+    return res.json({ success: true, data: { username: req.adminSession.username, role: 'administrator', csrfToken: req.adminSession.csrf } })
   }
 
   function logout(req, res) {
     activeSessions.delete(req.adminSession.sid)
-    res.setHeader('Set-Cookie', cookieOptions(env, 0))
+    const expiredCookie = cookieOptions(env, 0)
+    const expiredLegacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    res.setHeader('Set-Cookie', [expiredCookie, expiredLegacyCookie])
     return res.json({ success: true, message: 'You have been signed out.' })
   }
 

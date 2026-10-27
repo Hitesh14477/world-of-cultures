@@ -11,12 +11,19 @@ export function resolveAppRoute(pathname = '/') {
   const normalizedPath = pathname.replace(/^\/+|\/+$/g, '')
   if (!normalizedPath) return { type: 'home' }
   if (normalizedPath === 'admin/login') return { type: 'adminLogin' }
+  if (normalizedPath === 'admin/profile') return { type: 'adminProfile' }
   if (normalizedPath === 'admin') return { type: 'adminDashboard' }
   if (normalizedPath === 'search') return { type: 'search' }
   if (normalizedPath === 'register') return { type: 'register' }
   if (normalizedPath === 'login') return { type: 'login' }
   if (normalizedPath === 'my-collection') return { type: 'myCollection' }
+  if (normalizedPath === 'notifications') return { type: 'notifications' }
   if (normalizedPath === 'profile') return { type: 'profile' }
+  const memberProfileMatch = normalizedPath.match(/^members\/([^/]+)$/)
+  if (memberProfileMatch) {
+    const username = decodeSegment(memberProfileMatch[1])
+    return username ? { type: 'memberProfile', username } : { type: 'notFound' }
+  }
   if (normalizedPath === 'countries') return { type: 'directory' }
   if (normalizedPath === 'contribute') return { type: 'contribute' }
   if (normalizedPath === 'community') return { type: 'community' }

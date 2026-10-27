@@ -10,15 +10,18 @@ import {
   fetchPendingSubmissions,
   rejectSubmission,
 } from '../services/api.js'
+import { safeAdminReturnTo } from '../services/adminNavigation.js'
 
 function messageFrom(error, fallback) {
   return error.response?.data?.message || fallback
 }
 
 function SubmissionList({ title, items, selected, onSelect }) {
-  return <section className="admin-queue-section">
-    <h2>{title} <span>{items.length}</span></h2>
-    {items.length === 0 && <p className="admin-muted">Nothing is waiting in this queue.</p>}
+  const sectionId = title === 'Places' ? 'places' : 'cultural-contributions'
+  const itemLabel = title === 'Places' ? 'place submission' : 'cultural entry'
+  return <section className="admin-queue-section" id={sectionId}>
+    <h2>{title} <span className="admin-queue-count">{items.length} waiting</span></h2>
+    {items.length === 0 && <p className="admin-muted">No {itemLabel}s are waiting for review.</p>}
     <ul className="admin-queue">
       {items.map(({ type, record }) => {
         const id = String(record._id)
@@ -39,6 +42,7 @@ function LoginPage() {
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const returnTo = safeAdminReturnTo(new URLSearchParams(window.location.search).get('returnTo'))
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -47,7 +51,7 @@ function LoginPage() {
     setError('')
     try {
       await adminLogin({ username, password })
-      window.location.assign('/admin')
+      window.location.assign(returnTo)
     } catch (requestError) {
       setError(messageFrom(requestError, 'Sign-in failed. Please try again.'))
     } finally {
@@ -60,7 +64,7 @@ function LoginPage() {
     <header className="contribution-intro">
       <p className="eyebrow">Editorial access</p>
       <h1>Administrator sign in.</h1>
-      <p>Sign in to review cultural entries and places submitted to World of Cultures.</p>
+      <p>This sign-in is for administrators only. Sign in to review cultural entries and places submitted to World of Cultures.</p>
     </header>
     <form className="admin-login-form" onSubmit={handleSubmit}>
       {error && <p className="admin-message is-error" role="alert">{error}</p>}
@@ -77,6 +81,7 @@ function LoginPage() {
       />
       <button className="contribution-submit" type="submit" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<span aria-hidden="true">→</span></button>
     </form>
+    <p className="admin-login-signup">Not an administrator? <a href="/register">Sign up as a user</a> · Already have an account? <a href="/login">Log in</a></p>
   </main>
 }
 
@@ -188,12 +193,19 @@ function DashboardPage({ auth }) {
     return () => controller.abort()
   }, [session, retry])
 
+  useEffect(() => {
+    if (queueState !== 'ready' || !window.location.hash) return
+    const targetId = window.location.hash.slice(1)
+    window.requestAnimationFrame(() => document.getElementById(targetId)?.scrollIntoView({ block: 'start' }))
+  }, [queueState])
+
   function removeReviewed(item) {
     setQueue((current) => ({
       culturalEntries: current.culturalEntries.filter(({ type, record }) => !(type === item.type && String(record._id) === item.id)),
       places: current.places.filter(({ type, record }) => !(type === item.type && String(record._id) === item.id)),
     }))
     setSelected(null)
+    window.dispatchEvent(new Event('woc:admin-review-counts-changed'))
   }
 
   if (sessionState === 'loading') return <main className="contribution-page"><p role="status">Checking administrator session…</p></main>
@@ -202,26 +214,33 @@ function DashboardPage({ auth }) {
 
   return <main className="admin-page">
     <header className="admin-page-heading">
-      <div><p className="eyebrow">Editorial workspace</p><h1>Submission review</h1><p>Review the content and its sources before deciding. Approval makes a submission public.</p></div>
-      <div className="admin-account"><span>{session.username}</span><button type="button" onClick={auth.logout} disabled={auth.logoutBusy}>{auth.logoutBusy ? 'Signing out…' : 'Sign out'}</button></div>
+      <div><p className="eyebrow">Editorial workspace</p><h1>Submission review</h1><p>Choose a submission, check its details and sources, then approve it for publication or reject it to keep it private.</p></div>
     </header>
     {message && <p className="admin-message" role="status">{message}</p>}
-    <div className="admin-workspace">
+    {queueState === 'ready' && queue.culturalEntries.length === 0 && queue.places.length === 0
+      ? <section className="admin-empty-workspace" aria-labelledby="admin-empty-title">
+        <span className="admin-empty-mark" aria-hidden="true">✓</span>
+        <div><p className="eyebrow">Review queue</p><h2 id="admin-empty-title">You’re all caught up.</h2>
+          <p>There are no submissions waiting right now. New cultural entries and places will appear here after contributors send them for review.</p>
+          <p>Before approving a submission, check its content, sources, image and attribution. Approval makes it visible to visitors.</p>
+        </div>
+        <a href="/admin/profile#Notifications">View review overview <span aria-hidden="true">→</span></a>
+      </section>
+      : <div className="admin-workspace">
       <aside className="admin-queues" aria-label="Pending submissions">
         {queueState === 'loading' && <p role="status" className="admin-muted">Loading pending submissions…</p>}
         {queueState === 'error' && <div className="admin-message is-error" role="alert"><p>{message || 'The review queue could not be loaded.'}</p><button type="button" onClick={() => { setQueueState('loading'); setRetry((count) => count + 1) }}>Try again</button></div>}
         {queueState === 'ready' && <>
           <SubmissionList title="Cultural entries" items={queue.culturalEntries} selected={selected} onSelect={(type, id) => setSelected({ type, id })} />
           <SubmissionList title="Places" items={queue.places} selected={selected} onSelect={(type, id) => setSelected({ type, id })} />
-          {queue.culturalEntries.length === 0 && queue.places.length === 0 && <p className="admin-empty">There are no submissions waiting for review.</p>}
         </>}
       </aside>
       <section className="admin-review-pane" aria-label="Submission details">
         {selected
           ? <ReviewDetail key={`${selected.type}-${selected.id}`} item={selected} csrfToken={session.csrfToken} onComplete={removeReviewed} busy={busy} setBusy={setBusy} setMessage={setMessage} />
-          : <p className="admin-muted">Choose a submission to inspect its content and references.</p>}
+          : <div className="admin-review-guide"><p className="eyebrow">Review guide</p><h2>Select a submission to begin.</h2><p>Choose an item from either queue to inspect its full content, image, sources and attribution.</p><ol><li><strong>Check the evidence</strong><span>Confirm that the sources support the submitted information.</span></li><li><strong>Review image rights</strong><span>Check the image and its attribution before publishing.</span></li><li><strong>Make a decision</strong><span>Approve to make it public, or reject to keep it hidden.</span></li></ol></div>}
       </section>
-    </div>
+    </div>}
   </main>
 }
 
