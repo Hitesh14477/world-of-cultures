@@ -49,15 +49,26 @@ function parsePasswordHash(value) {
   return { salt: Buffer.from(match[1], 'base64url'), hash: Buffer.from(match[2], 'base64url') }
 }
 
+function cookieSameSite(env) {
+  if (env.COOKIE_SAMESITE) return env.COOKIE_SAMESITE
+  if (env.FRONTEND_ORIGIN && env.FRONTEND_ORIGIN.startsWith('https://') && !env.FRONTEND_ORIGIN.includes('localhost') && !env.FRONTEND_ORIGIN.includes('.invalid') && !env.FRONTEND_ORIGIN.includes('.example') && !env.FRONTEND_ORIGIN.includes('@example')) {
+    return 'None'
+  }
+  return 'Strict'
+}
+
 function cookieOptions(env, maxAge = SESSION_SECONDS) {
+  const sameSite = cookieSameSite(env)
+  const secure = env.NODE_ENV === 'production' || sameSite.toLowerCase() === 'none' || (env.FRONTEND_ORIGIN && env.FRONTEND_ORIGIN.startsWith('https://'))
   const options = [
     `${COOKIE_NAME}=`,
     'Path=/api',
     'HttpOnly',
-    'SameSite=Strict',
+    `SameSite=${sameSite}`,
     `Max-Age=${maxAge}`,
   ]
-  if (env.NODE_ENV === 'production') options.push('Secure')
+  if (secure) options.push('Secure')
+  if (sameSite.toLowerCase() === 'none') options.push('Partitioned')
   return options.join('; ')
 }
 
@@ -80,8 +91,10 @@ export function createAdminAuth(env = process.env, authStateStore) {
   }
 
   function issueCookie(res, session) {
+    const sameSite = cookieSameSite(env)
+    const secure = env.NODE_ENV === 'production' || sameSite.toLowerCase() === 'none'
     const cookie = cookieOptions(env).replace(`${COOKIE_NAME}=`, `${COOKIE_NAME}=${createSessionToken(session, sessionSecret)}`)
-    const legacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    const legacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? '; Secure' : ''}${sameSite.toLowerCase() === 'none' ? '; Partitioned' : ''}`
     res.setHeader('Set-Cookie', [cookie, legacyCookie])
   }
 
@@ -160,8 +173,10 @@ export function createAdminAuth(env = process.env, authStateStore) {
   async function logout(req, res) {
     try { await authStateStore.deleteSession('admin', req.adminSession.sid) }
     catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
+    const sameSite = cookieSameSite(env)
+    const secure = env.NODE_ENV === 'production' || sameSite.toLowerCase() === 'none'
     const expiredCookie = cookieOptions(env, 0)
-    const expiredLegacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
+    const expiredLegacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? '; Secure' : ''}${sameSite.toLowerCase() === 'none' ? '; Partitioned' : ''}`
     res.setHeader('Set-Cookie', [expiredCookie, expiredLegacyCookie])
     return res.json({ success: true, message: 'You have been signed out.' })
   }

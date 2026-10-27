@@ -46,20 +46,31 @@ function matchingOrigin(req, env) {
   return req.get('origin') === (env.FRONTEND_ORIGIN || 'http://localhost:5173')
 }
 
+function cookieSameSite(env) {
+  if (env.COOKIE_SAMESITE) return env.COOKIE_SAMESITE
+  if (env.FRONTEND_ORIGIN && env.FRONTEND_ORIGIN.startsWith('https://') && !env.FRONTEND_ORIGIN.includes('localhost') && !env.FRONTEND_ORIGIN.includes('.invalid') && !env.FRONTEND_ORIGIN.includes('.example') && !env.FRONTEND_ORIGIN.includes('@example')) {
+    return 'None'
+  }
+  return 'Strict'
+}
+
 function setCookie(res, session, env, maxAge = SESSION_SECONDS) {
   const token = session ? signedToken(session, env.USER_SESSION_SECRET) : ''
+  const sameSite = cookieSameSite(env)
+  const secure = env.NODE_ENV === 'production' || sameSite.toLowerCase() === 'none' || (env.FRONTEND_ORIGIN && env.FRONTEND_ORIGIN.startsWith('https://'))
   const fields = [
     `${COOKIE_NAME}=${token}`,
     // The same regular-user session is used by /api/users and /api/community.
     'Path=/api',
     'HttpOnly',
-    'SameSite=Strict',
+    `SameSite=${sameSite}`,
     `Max-Age=${maxAge}`,
   ]
-  if (env.NODE_ENV === 'production') fields.push('Secure')
+  if (secure) fields.push('Secure')
+  if (sameSite.toLowerCase() === 'none') fields.push('Partitioned')
   const serialized = fields.join('; ')
   // Expire the prior narrower-path cookie while migrating sessions to /api.
-  const legacyCookie = `${COOKIE_NAME}=; Path=/api/users; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
+  const legacyCookie = `${COOKIE_NAME}=; Path=/api/users; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? '; Secure' : ''}${sameSite.toLowerCase() === 'none' ? '; Partitioned' : ''}`
   res.setHeader('Set-Cookie', [serialized, legacyCookie])
 }
 
