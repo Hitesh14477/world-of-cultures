@@ -1,6 +1,9 @@
 # World of Cultures
 
-**Repository:** [github.com/Hitesh14477/world-of-cultures](https://github.com/Hitesh14477/world-of-cultures)
+- **Live Application:** [world-of-cultures.vercel.app](https://world-of-cultures.vercel.app)
+- **API Server:** [world-of-cultures.onrender.com/api](https://world-of-cultures.onrender.com/api)
+- **Demo Video:** [Watch Demonstration (Google Drive)](https://drive.google.com/file/d/1q4yMeYfVRMI7OCKfj7JMpwZS9PXy3IJ4/view?usp=sharing)
+- **Repository:** [github.com/Hitesh14477/world-of-cultures](https://github.com/Hitesh14477/world-of-cultures)
 
 ## Table of Contents
 
@@ -8,6 +11,7 @@
 - [Problem Statement](#problem-statement)
 - [Target Users](#target-users)
 - [Solution](#solution)
+- [Demo Video](#demo-video)
 - [Key Features](#key-features)
 - [User-Contributed Cultural Knowledge](#user-contributed-cultural-knowledge)
 - [Tech Stack](#tech-stack)
@@ -48,6 +52,10 @@ World of Cultures aims to make this exploration more convenient by organizing co
 World of Cultures provides a central website for browsing country profiles, searching published cultural entries and places, saving favourites, and sharing community posts. Members can submit cultural entries and places with references and an image. Those submissions remain unpublished until an administrator reviews and approves them.
 
 The application implements the submission form, pending-review queue, approval/publication, rejection with an optional reason, and contributor status display. It does not currently implement a request-changes decision or contributor editing/resubmission of a rejected record. Other ideas in this README are labelled as future work where applicable.
+
+## Demo Video
+
+- 📹 **Walkthrough and Feature Demonstration:** [Watch Video on Google Drive](https://drive.google.com/file/d/1q4yMeYfVRMI7OCKfj7JMpwZS9PXy3IJ4/view?usp=sharing)
 
 ## Key Features
 
@@ -185,7 +193,11 @@ The complete safe templates are [`backend/.env.example`](backend/.env.example) a
 
 ## Deployment
 
-No public deployment URL is configured yet. To deploy on a Linux host with Docker and a MongoDB service, follow [Production deployment (Docker Compose)](#production-deployment-docker-compose) below. It builds the frontend and API containers and serves them through Nginx on ports 80/443; configure TLS files and production environment values before starting it. For a separate frontend/API platform deployment, follow the cross-origin hosting notes in that section and keep both hosts same-site for cookie authentication.
+- **Live Application (Vercel):** [https://world-of-cultures.vercel.app](https://world-of-cultures.vercel.app)
+- **API Server (Render):** [https://world-of-cultures.onrender.com/api](https://world-of-cultures.onrender.com/api)
+- **Demo Video:** [Watch Demonstration on Google Drive](https://drive.google.com/file/d/1q4yMeYfVRMI7OCKfj7JMpwZS9PXy3IJ4/view?usp=sharing)
+
+To deploy on a Linux host with Docker and a MongoDB service, follow [Production deployment (Docker Compose)](#production-deployment-docker-compose) below. It builds the frontend and API containers and serves them through Nginx on ports 80/443; configure TLS files and production environment values before starting it. For a separate frontend/API platform deployment, follow the cross-origin hosting notes in that section and configure `FRONTEND_ORIGIN` and `VITE_API_URL` accordingly.
 
 ## Environment setup
 
