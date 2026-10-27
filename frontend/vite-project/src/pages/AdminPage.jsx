@@ -124,31 +124,39 @@ function ReviewDetail({ item, csrfToken, onComplete, busy, setBusy, setMessage }
   if (state === 'error') return <p className="admin-muted" role="alert">The selected submission could not be loaded. Select it again to retry.</p>
   const record = detail.record
   const country = record.country || {}
+  const hasValidImage = Boolean(record.image?.url && record.image?.publicId && record.image?.rightsConfirmed === true && record.image?.rightsConfirmedAt)
 
   return <article className="admin-review-detail">
-    <p className="eyebrow">{item.type === 'places' ? 'Place submission' : `Cultural entry · ${record.category}`}</p>
-    <div className="admin-review-country">
-      {country.name && <CountryFlag country={country} className="admin-review-flag" />}
-      <span>{country.name || 'Country unavailable'}</span>
-    </div>
-    <h2>{record.title || record.name}</h2>
-    {record.summary && <p className="admin-review-summary">{record.summary}</p>}
-    {record.category && item.type === 'places' && <p className="admin-muted">Type: {record.category.replaceAll('_', ' ')}</p>}
-    {record.region && <p className="admin-muted">Region: {record.region}</p>}
-    {record.location && <p className="admin-muted">Location: {record.location}</p>}
-    <p className="admin-review-content">{record.content || record.description}</p>
-    {record.image?.url && <figure className="contribution-published-image admin-contribution-image"><img src={record.image.url} alt={record.image.caption || record.title || record.name} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</figure>}
-    <FactualClaims facts={record.facts} />
-    <section className="record-source-section">
-      <h3>References and attribution</h3>
-      <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
-    </section>
-    <label className="admin-rejection-reason">Rejection reason <span>(optional)</span>
-      <textarea rows="3" maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} />
-    </label>
-    <div className="admin-review-actions">
-      <button type="button" className="admin-reject-button" disabled={busy} onClick={() => decide('reject')}>{busy ? 'Saving…' : 'Reject'}</button>
-      <button type="button" className="contribution-submit" disabled={busy} onClick={() => decide('approve')}>{busy ? 'Saving…' : 'Approve and publish'}<span aria-hidden="true">→</span></button>
+    <div className="admin-review-layout">
+      <div className="admin-review-copy">
+        <p className="eyebrow">{item.type === 'places' ? 'Place submission' : `Cultural entry · ${record.category}`}</p>
+        <div className="admin-review-country">
+          {country.name && <CountryFlag country={country} className="admin-review-flag" />}
+          <span>{country.name || 'Country unavailable'}</span>
+        </div>
+        <h2>{record.title || record.name}</h2>
+        {record.summary && <p className="admin-review-summary">{record.summary}</p>}
+        {record.category && item.type === 'places' && <p className="admin-muted">Type: {record.category.replaceAll('_', ' ')}</p>}
+        {record.region && <p className="admin-muted">Region: {record.region}</p>}
+        {record.location && <p className="admin-muted">Location: {record.location}</p>}
+        <p className="admin-review-content">{record.content || record.description}</p>
+        <FactualClaims facts={record.facts} />
+        <section className="record-source-section">
+          <h3>References and attribution</h3>
+          <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
+        </section>
+        {!hasValidImage && <p className="admin-image-remediation" role="alert">This legacy submission has no valid stored image. Request remediation before publishing; approval is disabled.</p>}
+        <label className="admin-rejection-reason">Rejection reason <span>(optional)</span>
+          <textarea rows="3" maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} />
+        </label>
+        <div className="admin-review-actions">
+          <button type="button" className="admin-reject-button" disabled={busy} onClick={() => decide('reject')}>{busy ? 'Saving…' : 'Reject'}</button>
+          <button type="button" className="contribution-submit" disabled={busy || !hasValidImage} onClick={() => decide('approve')}>{busy ? 'Saving…' : 'Approve and publish'}<span aria-hidden="true">→</span></button>
+        </div>
+      </div>
+      {hasValidImage
+        ? <figure className="contribution-published-image admin-contribution-image"><img src={record.image.url} alt={record.image.caption || record.title || record.name} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</figure>
+        : <div className="admin-image-placeholder">Image required before publication</div>}
     </div>
   </article>
 }

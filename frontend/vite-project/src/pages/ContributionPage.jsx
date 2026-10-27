@@ -77,6 +77,7 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
   const [notice, setNotice] = useState(null)
   const [errors, setErrors] = useState([])
   const submitLock = useRef(false)
+  const imageInputRef = useRef(null)
 
   const isEntry = kind === 'entry'
   const categories = isEntry ? ENTRY_CATEGORIES : PLACE_TYPES
@@ -106,6 +107,12 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
 
   async function handleSubmit(event) {
     event.preventDefault()
+    if (!imageFile) {
+      const message = 'An image is required for every submission.'
+      setImageError(message)
+      setNotice({ type: 'error', message })
+      return
+    }
     if (imageError) {
       setNotice({ type: 'error', message: imageError })
       return
@@ -142,6 +149,7 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
       setImageFile(null)
       setImagePreview('')
       setImageError('')
+      if (imageInputRef.current) imageInputRef.current.value = ''
     } catch (error) {
       const response = error.response?.data
       setNotice({ type: 'error', message: response?.message || 'We could not submit your contribution. Please try again.' })
@@ -176,22 +184,26 @@ function SubmissionForm({ kind, countries, csrfToken, fixedCountry, fixedCategor
       {!isEntry && <label>Location <span className="form-optional">(optional)</span><input maxLength={200} value={values.location} onChange={(event) => updateField('location', event.target.value)} placeholder="City or region" /></label>}
       <label>{isEntry ? 'Region' : 'Cultural region'} <span className="form-optional">(optional)</span><input maxLength={160} value={values.region} onChange={(event) => updateField('region', event.target.value)} /></label>
       <label className="form-span">{isEntry ? 'Description' : 'Place description'}<textarea required rows="7" maxLength={isEntry ? 20000 : 5000} value={isEntry ? values.content : values.description} onChange={(event) => updateField(isEntry ? 'content' : 'description', event.target.value)} /></label>
-      <label className="form-span">Photograph <span className="form-optional">(optional · JPEG, PNG, or WebP · up to 5 MB)</span>
-        <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
+      <label className="form-span">Photograph <span className="required-marker" aria-hidden="true">*</span> <span className="form-optional">(JPEG, PNG, or WebP · up to 5 MB)</span>
+        <span className="form-help">An image is required for every submission. Share only an image you own or have permission to use.</span>
+        <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" required={!imageFile} aria-invalid={Boolean(imageError)} aria-describedby="contribution-image-help" aria-errormessage={imageError ? 'contribution-image-error' : undefined} onInvalid={() => setImageError('An image is required for every submission.')} onChange={(event) => {
           const selected = event.target.files?.[0] || null
           setImageError('')
           if (selected && !['image/jpeg', 'image/png', 'image/webp'].includes(selected.type)) { setImageError('Choose a JPEG, PNG, or WebP image.'); event.target.value = ''; setImageFile(null); setImagePreview(''); return }
+          if (selected && selected.size === 0) { setImageError('The selected image is empty. Choose a different image.'); event.target.value = ''; setImageFile(null); setImagePreview(''); return }
           if (selected && selected.size > 5 * 1024 * 1024) { setImageError('Choose an image that is 5 MB or smaller.'); event.target.value = ''; setImageFile(null); setImagePreview(''); return }
           setImagePreview(selected ? URL.createObjectURL(selected) : '')
           setImageFile(selected)
         }} />
+        <span id="contribution-image-help" className="sr-only">Required image, JPEG PNG or WebP, maximum 5 megabytes.</span>
       </label>
-      {imageError && <p className="form-image-error form-span" role="alert">{imageError}</p>}
+      {imageError && <p id="contribution-image-error" className="form-image-error form-span" role="alert">{imageError}</p>}
       {imageFile && <>
         <label className="form-span">Image caption <span className="form-optional">(optional)</span><input maxLength={240} value={values.imageCaption || ''} onChange={(event) => updateField('imageCaption', event.target.value)} /></label>
         <label className="form-span image-rights-confirm"><input type="checkbox" checked={Boolean(values.imageRightsConfirmed)} onChange={(event) => updateField('imageRightsConfirmed', event.target.checked)} /> I own this image or have permission to share it.</label>
         {imagePreview && <img className="contribution-image-preview form-span" src={imagePreview} alt="Preview of selected contribution image" />}
-        <button className="form-text-button form-span" type="button" onClick={() => { setImagePreview(''); setImageFile(null); setValues((current) => ({ ...current, imageCaption: '', imageRightsConfirmed: false })) }}>Remove selected image</button>
+        <p className="form-help form-span">To replace this image, choose another file above.</p>
+        <button className="form-text-button form-span" type="button" onClick={() => { setImagePreview(''); setImageFile(null); if (imageInputRef.current) imageInputRef.current.value = ''; setValues((current) => ({ ...current, imageCaption: '', imageRightsConfirmed: false })) }}>Remove selected image</button>
       </>}
     </fieldset>
     <SourceFields sources={values.sources} onChange={updateSource} onAdd={addSource} onRemove={removeSource} disabled={submitting} />

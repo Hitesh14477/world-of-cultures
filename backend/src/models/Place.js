@@ -38,6 +38,15 @@ const PlaceSchema = new mongoose.Schema({
   rejectionReason: { type: String, trim: true, maxlength: 1000 },
 }, { timestamps: true, strict: 'throw' })
 
+// Keep legacy documents and unsubmitted research drafts readable; require an
+// image for new user submissions and new records marked public.
+PlaceSchema.pre('validate', function requireSubmissionImage() {
+  const requiresImage = this.isNew && (this.submittedBy || ['verified', 'published'].includes(this.reviewStatus))
+  if (requiresImage && (!this.image?.url || !this.image?.publicId || this.image?.rightsConfirmed !== true || !this.image?.rightsConfirmedAt)) {
+    this.invalidate('image', 'A valid stored image is required for submitted or public places.')
+  }
+})
+
 PlaceSchema.index({ country: 1, reviewStatus: 1, category: 1, name: 1 })
 PlaceSchema.index({ reviewStatus: 1, name: 1, _id: 1 })
 PlaceSchema.index(

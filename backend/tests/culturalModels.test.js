@@ -64,6 +64,34 @@ test('uploaded contribution images require a recorded rights confirmation and ti
   await assert.rejects(invalid.validate(), (error) => Boolean(error.errors['image.rightsConfirmed'] || error.errors['image.rightsConfirmedAt']));
 });
 
+test('new user-submitted and public records require a complete stored image while research drafts remain compatible', async () => {
+  const submittedEntry = new CulturalEntry({
+    country,
+    submittedBy: new mongoose.Types.ObjectId(),
+    category: 'history',
+    title: 'Submitted without an image',
+    content: 'Description.',
+  });
+  await assert.rejects(submittedEntry.validate(), (error) => Boolean(error.errors.image));
+
+  const publishedPlace = new Place({
+    country,
+    name: 'New public place without image',
+    category: 'heritage_site',
+    reviewStatus: 'published',
+  });
+  await assert.rejects(publishedPlace.validate(), (error) => Boolean(error.errors.image));
+
+  const researchDraft = new CulturalEntry({
+    country,
+    category: 'history',
+    title: 'Unsubmitted research draft',
+    content: 'Research notes.',
+    reviewStatus: 'pending_review',
+  });
+  await researchDraft.validate();
+});
+
 test('cultural collections have country and public-review lookup indexes', () => {
   for (const schema of [CulturalEntry.schema, Place.schema]) {
     assert.ok(schema.indexes().some(([fields]) => fields.country === 1 && fields.reviewStatus === 1));

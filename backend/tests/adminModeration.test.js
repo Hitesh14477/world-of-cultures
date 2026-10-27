@@ -16,6 +16,7 @@ function makeRecord(id, values) {
     country: { _id: '65fabc1234567890abcdef99', name: 'India', slug: 'india', flagEmoji: '🇮🇳' },
     reviewStatus: 'pending_review',
     sources: [{ title: 'Reference', publisher: 'Institution', url: 'https://example.org/source' }],
+    image: { url: 'https://images.example.org/submission.jpg', publicId: 'woc/submission', rightsConfirmed: true, rightsConfirmedAt: new Date() },
     ...values,
   }
 }
@@ -175,6 +176,7 @@ test('administrator can inspect and approve both record types without rewriting 
     for (const [type, id] of [['cultural-entries', entryId], ['places', placeId]]) {
       const detailResponse = await fetch(`${baseUrl}/api/admin/submissions/${type}/${id}`, authenticatedOptions(auth.cookie, auth.body.data.csrfToken))
       assert.equal(detailResponse.status, 200)
+      assert.match((await detailResponse.json()).data.record.image.url, /^https:\/\//)
       const path = `${baseUrl}/api/admin/submissions/${type}/${id}/approve`
       const response = await fetch(path, authenticatedOptions(auth.cookie, auth.body.data.csrfToken, 'POST', {}))
       assert.equal(response.status, 200)
@@ -186,6 +188,20 @@ test('administrator can inspect and approve both record types without rewriting 
     assert.deepEqual(places[0].sources, originalPlaceSource)
     assert.equal(entries[0].reviewStatus, 'published')
     assert.equal(places[0].reviewStatus, 'published')
+  })
+})
+
+test('administrator cannot publish a legacy pending submission without a valid image', async () => {
+  const entries = [makeRecord(entryId, { title: 'Legacy text-only entry', image: undefined })]
+  await withServer({ entries, places: [] }, async (baseUrl) => {
+    const auth = await login(baseUrl)
+    const response = await fetch(
+      `${baseUrl}/api/admin/submissions/cultural-entries/${entryId}/approve`,
+      authenticatedOptions(auth.cookie, auth.body.data.csrfToken, 'POST', {}),
+    )
+    assert.equal(response.status, 409)
+    assert.match((await response.json()).message, /valid image/i)
+    assert.equal(entries[0].reviewStatus, 'pending_review')
   })
 })
 

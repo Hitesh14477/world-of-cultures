@@ -133,8 +133,11 @@ function validateImageFields(payload, errors, hasImage) {
     if (typeof payload.imageRightsConfirmed !== 'string' || payload.imageRightsConfirmed !== 'true') {
       errors.push({ field: 'imageRightsConfirmed', message: 'Confirm that you own this image or have permission to share it.' })
     }
-  } else if ((payload.imageCaption !== undefined && payload.imageCaption !== '') || payload.imageRightsConfirmed !== undefined) {
-    errors.push({ field: 'image', message: 'Select an image before adding image details.' })
+  } else {
+    errors.push({ field: 'image', message: 'An image is required for every submission.' })
+    if ((payload.imageCaption !== undefined && payload.imageCaption !== '') || payload.imageRightsConfirmed !== undefined) {
+      errors.push({ field: 'image', message: 'Select an image before adding image details.' })
+    }
   }
 }
 

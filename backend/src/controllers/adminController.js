@@ -23,6 +23,10 @@ function queryWithCountry(query) {
   return query.select('-__v').populate('country', 'name slug flagEmoji')
 }
 
+function hasUsableStoredImage(image) {
+  return Boolean(image?.url && /^https:\/\//i.test(image.url) && image?.publicId && image.rightsConfirmed === true && image.rightsConfirmedAt)
+}
+
 export function createAdminController({ CountryModel, CulturalEntryModel, PlaceModel }) {
   const models = { CulturalEntry: CulturalEntryModel, Place: PlaceModel }
 
@@ -66,12 +70,24 @@ export function createAdminController({ CountryModel, CulturalEntryModel, PlaceM
         if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body) || Object.keys(req.body).length) {
           throw clientError(400, 'Approval requests cannot include content changes.')
         }
+        const pending = await Model.findOne({ _id: req.params.id, reviewStatus: 'pending_review' }).select('image').lean()
+        if (!pending) throw clientError(404, 'Pending submission not found.')
+        if (!hasUsableStoredImage(pending.image)) {
+          throw clientError(409, 'This submission needs a valid image before it can be published. Please request remediation.')
+        }
         const record = await queryWithCountry(Model.findOneAndUpdate(
-          { _id: req.params.id, reviewStatus: 'pending_review' },
+          {
+            _id: req.params.id,
+            reviewStatus: 'pending_review',
+            'image.url': { $type: 'string' },
+            'image.publicId': { $type: 'string' },
+            'image.rightsConfirmed': true,
+            'image.rightsConfirmedAt': { $exists: true },
+          },
           { $set: { reviewStatus: 'published' } },
           { new: true, runValidators: true },
         )).lean()
-        if (!record) throw clientError(404, 'Pending submission not found.')
+        if (!record) throw clientError(409, 'This submission changed during review. Reload it before deciding.')
         return res.json({ success: true, message: 'Submission approved and published.', data: { type: req.params.type, record } })
       } catch (error) {
         return next(error)

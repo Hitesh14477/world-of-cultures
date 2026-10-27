@@ -86,6 +86,12 @@ export function createCountryController(CountryModel = Country, CulturalEntryMod
 
       if (req.file) {
         const result = await imageStorage.upload(req.file.buffer, 'world-of-cultures/cultural-submissions');
+        if (!result?.url || !result?.publicId) {
+          if (result?.publicId) {
+            try { await imageStorage.remove(result.publicId) } catch { /* storage cleanup is retried operationally */ }
+          }
+          return res.status(502).json({ success: false, message: 'The image could not be stored. Please try again.' });
+        }
         uploadedImage = result;
       }
       let record;

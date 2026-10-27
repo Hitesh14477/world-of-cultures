@@ -6,6 +6,7 @@ const country = { _id: 'country-india-id', slug: 'india' };
 const CONTRIBUTOR_ID = 'contributor-test-id';
 const CONTRIBUTOR_CSRF = 'contribution-test-csrf';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/xioAAAAASUVORK5CYII=', 'base64');
+const TEST_IMAGE_STORAGE = { async upload() { return { url: 'https://images.example.test/submission.png', publicId: 'submission' }; }, async remove() {} };
 
 function contributorHeaders() {
   return { 'Content-Type': 'application/json', Origin: 'http://localhost:5173', 'X-Test-User': CONTRIBUTOR_ID, 'X-CSRF-Token': CONTRIBUTOR_CSRF };
@@ -13,6 +14,16 @@ function contributorHeaders() {
 
 function multipartContributorHeaders() {
   return { Origin: 'http://localhost:5173', 'X-Test-User': CONTRIBUTOR_ID, 'X-CSRF-Token': CONTRIBUTOR_CSRF };
+}
+
+function contributionForm(payload, image = PNG) {
+  const form = new FormData();
+  for (const [field, value] of Object.entries(payload)) {
+    form.append(field, field === 'sources' ? JSON.stringify(value) : String(value ?? ''));
+  }
+  form.append('imageRightsConfirmed', 'true');
+  form.append('image', new Blob([image], { type: 'image/png' }), 'contribution.png');
+  return form;
 }
 
 function fakeCountryModel() {
@@ -91,13 +102,13 @@ function validPlace(overrides = {}) {
   };
 }
 
-test('POST cultural entry creates a record with country ObjectId and server-set pending status', async () => {
+test('POST cultural entry with image creates a record with country ObjectId and server-set pending status', async () => {
   const entries = fakeCollectionModel();
-  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries }, async (baseUrl) => {
+  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries, communityImageStorage: TEST_IMAGE_STORAGE }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/cultural-entries`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validEntry()),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validEntry()),
     });
     const body = await response.json();
     assert.equal(response.status, 201);
@@ -109,19 +120,20 @@ test('POST cultural entry creates a record with country ObjectId and server-set 
   });
 });
 
-test('POST place creates a record using the existing country lookup and Place category', async () => {
+test('POST place with image creates a record using the existing country lookup and Place category', async () => {
   const places = fakeCollectionModel();
-  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: places }, async (baseUrl) => {
+  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: places, communityImageStorage: TEST_IMAGE_STORAGE }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/places`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validPlace({ reviewStatus: 'published' })),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validPlace({ reviewStatus: 'published' })),
     });
     const body = await response.json();
     assert.equal(response.status, 201);
     assert.equal(body.data.reviewStatus, 'pending_review');
     assert.equal(places.records[0].country, country._id);
     assert.equal(places.records[0].category, 'heritage_site');
+    assert.ok(places.records[0].image.url);
   });
 });
 
@@ -142,7 +154,7 @@ test('signed-out visitors cannot submit cultural entries or places', async () =>
 
 test('invalid categories and malformed source URLs return field errors and do not create records', async () => {
   const entries = fakeCollectionModel();
-  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries }, async (baseUrl) => {
+  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries, communityImageStorage: TEST_IMAGE_STORAGE }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/cultural-entries`, {
       method: 'POST',
       headers: contributorHeaders(),
@@ -169,11 +181,12 @@ test('missing required fields and oversized place descriptions are rejected', as
     assert.equal(missing.status, 400);
     assert.ok(missingBody.errors.some(({ field }) => field === 'title'));
     assert.ok(missingBody.errors.some(({ field }) => field === 'sources'));
+    assert.ok(missingBody.errors.some(({ field }) => field === 'image'));
 
     const oversized = await fetch(`${baseUrl}/api/countries/india/places`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validPlace({ description: 'x'.repeat(5001) })),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validPlace({ description: 'x'.repeat(5001) })),
     });
     const oversizedBody = await oversized.json();
     assert.equal(oversized.status, 400);
@@ -185,11 +198,11 @@ test('missing required fields and oversized place descriptions are rejected', as
 
 test('an attempted published status is ignored and the pending record stays hidden from public reads', async () => {
   const entries = fakeCollectionModel();
-  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries }, async (baseUrl) => {
+  await withServer({ CountryModel: fakeCountryModel(), CulturalEntryModel: entries, communityImageStorage: TEST_IMAGE_STORAGE }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/cultural-entries`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validEntry({ reviewStatus: 'published' })),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validEntry({ reviewStatus: 'published' })),
     });
     assert.equal(response.status, 201);
     assert.equal(entries.records[0].reviewStatus, 'pending_review');
@@ -205,8 +218,8 @@ test('unknown country slug returns 404 and does not create a submission', async 
   await withServer({ CountryModel: fakeCountryModel(), PlaceModel: places }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/no-country/places`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validPlace()),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validPlace()),
     });
     assert.equal(response.status, 404);
     assert.equal(places.records.length, 0);
@@ -275,11 +288,12 @@ test('invalid upload bytes and unconfirmed image rights are rejected before stor
 
 test('source license metadata must include full attribution details when any license field is entered', async () => {
   const places = fakeCollectionModel();
-  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: places }, async (baseUrl) => {
+  const storage = { async upload() { return { url: 'https://images.example.test/place.png', publicId: 'place' }; }, async remove() {} };
+  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: places, communityImageStorage: storage }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/places`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validPlace({ sources: [{ title: 'Reference', publisher: 'Publisher', url: 'https://example.org', license: 'CC BY 4.0' }] })),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validPlace({ sources: [{ title: 'Reference', publisher: 'Publisher', url: 'https://example.org', license: 'CC BY 4.0' }] })),
     });
     const body = await response.json();
     assert.equal(response.status, 400);
@@ -290,11 +304,12 @@ test('source license metadata must include full attribution details when any lic
 
 test('database failures return a generic error without leaking internal details', async () => {
   const failingPlaces = { create: async () => { throw new Error('private connection detail'); } };
-  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: failingPlaces }, async (baseUrl) => {
+  const storage = { async upload() { return { url: 'https://images.example.test/place.png', publicId: 'place' }; }, async remove() {} };
+  await withServer({ CountryModel: fakeCountryModel(), PlaceModel: failingPlaces, communityImageStorage: storage }, async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries/india/places`, {
       method: 'POST',
-      headers: contributorHeaders(),
-      body: JSON.stringify(validPlace()),
+      headers: multipartContributorHeaders(),
+      body: contributionForm(validPlace()),
     });
     const body = await response.text();
     assert.equal(response.status, 500);

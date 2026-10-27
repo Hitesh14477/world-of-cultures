@@ -31,21 +31,27 @@ export default function CulturalEntryDetail({ slug, entryId, auth }) {
   return <main className="record-detail-page">
     <a className="detail-back-link" href={`/countries/${encodeURIComponent(slug)}`}>← Back to {country.name}</a>
     <article className="record-detail">
-      <p className="eyebrow">{country.name} · {categoryLabel(record.category)}</p>
-      <h1>{record.title}</h1>
-      <FavouriteButton auth={auth} type="cultural-entry" targetId={String(record._id)} />
-      {record.region && <p className="record-region">{record.region}</p>}
-      {record.summary && <p className="record-lead">{record.summary}</p>}
-      {record.image?.url && <figure className="contribution-published-image record-contribution-image"><img src={record.image.url} alt={record.image.caption || record.title} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</figure>}
-      {record.content && <section className="record-description-section" aria-labelledby="record-description-heading">
-        <h2 id="record-description-heading">Description</h2>
-        <div className="record-description">{record.content}</div>
-      </section>}
-      <FactualClaims facts={record.facts} />
-      <section className="record-source-section" aria-labelledby="record-sources-heading">
-        <h2 id="record-sources-heading">Sources and attribution</h2>
-        <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
-      </section>
+      <div className="record-detail-layout">
+        <div className="record-detail-copy">
+          <p className="eyebrow">{country.name} · {categoryLabel(record.category)}</p>
+          <h1>{record.title}</h1>
+          <FavouriteButton auth={auth} type="cultural-entry" targetId={String(record._id)} />
+          {record.region && <p className="record-region">{record.region}</p>}
+          {record.summary && <p className="record-lead">{record.summary}</p>}
+          {record.content && <section className="record-description-section" aria-labelledby="record-description-heading">
+            <h2 id="record-description-heading">Description</h2>
+            <div className="record-description">{record.content}</div>
+          </section>}
+          <FactualClaims facts={record.facts} />
+          <section className="record-source-section" aria-labelledby="record-sources-heading">
+            <h2 id="record-sources-heading">Sources and attribution</h2>
+            <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
+          </section>
+        </div>
+        <figure className={`contribution-published-image record-contribution-image${record.image?.url ? '' : ' is-missing'}`}>
+          {record.image?.url ? <><img src={record.image.url} alt={record.image.caption || record.title} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
+        </figure>
+      </div>
     </article>
   </main>
 }

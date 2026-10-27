@@ -31,23 +31,29 @@ export default function PlaceDetail({ slug, placeId, auth }) {
   return <main className="record-detail-page">
     <a className="detail-back-link" href={`/countries/${encodeURIComponent(slug)}`}>← Back to {country.name}</a>
     <article className="record-detail">
-      <p className="eyebrow">{country.name} · {categoryLabel(record.category)}</p>
-      <h1>{record.name}</h1>
-      <FavouriteButton auth={auth} type="place" targetId={String(record._id)} />
-      {(record.location || record.region) && <p className="record-region">{[record.location, record.region].filter(Boolean).join(' · ')}</p>}
-      <p className="record-type">Place type: {categoryLabel(record.category)}</p>
-      {record.image?.url && <figure className="contribution-published-image record-contribution-image"><img src={record.image.url} alt={record.image.caption || record.name} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</figure>}
-      {record.description
-        ? <section className="record-description-section" aria-labelledby="record-description-heading">
-          <h2 id="record-description-heading">Description</h2>
-          <div className="record-description">{record.description}</div>
-        </section>
-        : <p className="collection-note">A description for this place is still being collected.</p>}
-      <FactualClaims facts={record.facts} />
-      <section className="record-source-section" aria-labelledby="record-sources-heading">
-        <h2 id="record-sources-heading">Sources and attribution</h2>
-        <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
-      </section>
+      <div className="record-detail-layout">
+        <div className="record-detail-copy">
+          <p className="eyebrow">{country.name} · {categoryLabel(record.category)}</p>
+          <h1>{record.name}</h1>
+          <FavouriteButton auth={auth} type="place" targetId={String(record._id)} />
+          {(record.location || record.region) && <p className="record-region">{[record.location, record.region].filter(Boolean).join(' · ')}</p>}
+          <p className="record-type">Place type: {categoryLabel(record.category)}</p>
+          {record.description
+            ? <section className="record-description-section" aria-labelledby="record-description-heading">
+              <h2 id="record-description-heading">Description</h2>
+              <div className="record-description">{record.description}</div>
+            </section>
+            : <p className="collection-note">A description for this place is still being collected.</p>}
+          <FactualClaims facts={record.facts} />
+          <section className="record-source-section" aria-labelledby="record-sources-heading">
+            <h2 id="record-sources-heading">Sources and attribution</h2>
+            <SourceReferences sources={record.sources} imageAttributions={record.imageAttributions} />
+          </section>
+        </div>
+        <figure className={`contribution-published-image record-contribution-image${record.image?.url ? '' : ' is-missing'}`}>
+          {record.image?.url ? <><img src={record.image.url} alt={record.image.caption || record.name} />{record.image.caption && <figcaption>{record.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
+        </figure>
+      </div>
     </article>
   </main>
 }

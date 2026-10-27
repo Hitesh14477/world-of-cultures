@@ -44,6 +44,16 @@ const CulturalEntrySchema = new mongoose.Schema({
   rejectionReason: { type: String, trim: true, maxlength: 1000 },
 }, { timestamps: true, strict: 'throw' })
 
+// User submissions and new public records must carry a stored image. Existing
+// legacy documents and source-policy-approved, unsubmitted research drafts
+// remain valid so this additive rule does not require a data migration.
+CulturalEntrySchema.pre('validate', function requireSubmissionImage() {
+  const requiresImage = this.isNew && (this.submittedBy || ['verified', 'published'].includes(this.reviewStatus))
+  if (requiresImage && (!this.image?.url || !this.image?.publicId || this.image?.rightsConfirmed !== true || !this.image?.rightsConfirmedAt)) {
+    this.invalidate('image', 'A valid stored image is required for submitted or public cultural entries.')
+  }
+})
+
 CulturalEntrySchema.index({ country: 1, category: 1, reviewStatus: 1, title: 1 })
 CulturalEntrySchema.index({ reviewStatus: 1, title: 1, _id: 1 })
 CulturalEntrySchema.index(

@@ -41,22 +41,34 @@ function CountryOverview({ country }) {
 function CulturalEntryCard({ entry, slug }) {
   const href = `/countries/${encodeURIComponent(slug)}/cultural-entries/${encodeURIComponent(entry._id)}`
   return <article className="detail-entry">
-    {entry.image?.url && <figure className="contribution-published-image"><img src={entry.image.url} alt={entry.image.caption || entry.title} />{entry.image.caption && <figcaption>{entry.image.caption}</figcaption>}</figure>}
-    <h3><a className="record-card-link" href={href}>{entry.title}<span aria-hidden="true"> ↗</span></a></h3>
-    {entry.region && <p className="detail-region">{entry.region}</p>}
-    {entry.summary && <p className="detail-summary">{entry.summary}</p>}
-    <SourceReferences sources={entry.sources} imageAttributions={entry.imageAttributions} />
+    <div className="detail-entry-layout">
+      <div className="detail-entry-copy">
+        <h3><a className="record-card-link" href={href}>{entry.title}<span aria-hidden="true"> ↗</span></a></h3>
+        {entry.region && <p className="detail-region">{entry.region}</p>}
+        {entry.summary && <p className="detail-summary">{entry.summary}</p>}
+        <SourceReferences sources={entry.sources} imageAttributions={entry.imageAttributions} />
+      </div>
+      <figure className={`contribution-published-image detail-entry-image${entry.image?.url ? '' : ' is-missing'}`}>
+        {entry.image?.url ? <><img src={entry.image.url} alt={entry.image.caption || entry.title} />{entry.image.caption && <figcaption>{entry.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
+      </figure>
+    </div>
   </article>
 }
 
 function PlaceCard({ place, slug }) {
   const href = `/countries/${encodeURIComponent(slug)}/places/${encodeURIComponent(place._id)}`
   return <article className="detail-entry">
-    {place.image?.url && <figure className="contribution-published-image"><img src={place.image.url} alt={place.image.caption || place.name} />{place.image.caption && <figcaption>{place.image.caption}</figcaption>}</figure>}
-    <h3><a className="record-card-link" href={href}>{place.name}<span aria-hidden="true"> ↗</span></a></h3>
-    {(place.location || place.region) && <p className="detail-region">{[place.location, place.region].filter(Boolean).join(' · ')}</p>}
-    {place.description && <p className="detail-copy">{place.description}</p>}
-    <SourceReferences sources={place.sources} imageAttributions={place.imageAttributions} />
+    <div className="detail-entry-layout">
+      <div className="detail-entry-copy">
+        <h3><a className="record-card-link" href={href}>{place.name}<span aria-hidden="true"> ↗</span></a></h3>
+        {(place.location || place.region) && <p className="detail-region">{[place.location, place.region].filter(Boolean).join(' · ')}</p>}
+        {place.description && <p className="detail-copy">{place.description}</p>}
+        <SourceReferences sources={place.sources} imageAttributions={place.imageAttributions} />
+      </div>
+      <figure className={`contribution-published-image detail-entry-image${place.image?.url ? '' : ' is-missing'}`}>
+        {place.image?.url ? <><img src={place.image.url} alt={place.image.caption || place.name} />{place.image.caption && <figcaption>{place.image.caption}</figcaption>}</> : <figcaption>Image unavailable. This existing record needs image remediation.</figcaption>}
+      </figure>
+    </div>
   </article>
 }
 
