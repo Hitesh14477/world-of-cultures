@@ -5,7 +5,7 @@ import NotificationBell from './NotificationBell.jsx'
 import AdminReviewBell from './AdminReviewBell.jsx'
 
 function NavLink({ href, icon: Icon, children }) {
-  return <a className="nav-icon-link" href={href}><Icon size={19} strokeWidth={1.8} aria-hidden="true" /><span>{children}</span></a>
+  return <a className="nav-icon-link" href={href}><Icon size={16} strokeWidth={1.8} aria-hidden="true" /><span>{children}</span></a>
 }
 
 export default function Navbar({ userAuth, adminAuth }) {

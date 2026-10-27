@@ -21,7 +21,7 @@ function SubmissionList({ title, items, selected, onSelect }) {
   const itemLabel = title === 'Places' ? 'place submission' : 'cultural entry'
   return <section className="admin-queue-section" id={sectionId}>
     <h2>{title} <span className="admin-queue-count">{items.length} waiting</span></h2>
-    {items.length === 0 && <p className="admin-muted">No {itemLabel}s are waiting for review.</p>}
+    {items.length === 0 && <p className="admin-muted">No {itemLabel === 'cultural entry' ? 'cultural entries' : `${itemLabel}s`} are waiting for review.</p>}
     <ul className="admin-queue">
       {items.map(({ type, record }) => {
         const id = String(record._id)
