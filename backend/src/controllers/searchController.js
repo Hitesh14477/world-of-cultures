@@ -168,11 +168,24 @@ export function createSearchController({ CountryModel = Country, CulturalEntryMo
         { name: regex }, { officialName: regex }, { capital: regex }, { region: regex }, { subregion: regex },
         { 'languages.name': regex }, { 'currencies.name': regex },
       ] } : {}
+      const exactCountrySearch = regex ? { $or: [
+        { name: new RegExp(`^${escapeRegex(params.q)}$`, 'i') },
+        { officialName: new RegExp(`^${escapeRegex(params.q)}$`, 'i') },
+        { slug: new RegExp(`^${escapeRegex(params.q)}$`, 'i') },
+      ] } : {}
+      const matchingCountry = regex && params.type !== 'country'
+        ? await CountryModel.find(combineFilters(countryFilter, exactCountrySearch))
+          .select('_id name officialName slug cca2 flagEmoji flagImageUrl continent region subregion capital')
+          .lean()
+        : []
+      const expandedCountryIds = matchingCountry.map((country) => country._id)
       const entrySearch = regex ? { $or: [{ title: regex }, { summary: regex }, { content: regex }] } : {}
       const placeSearch = regex ? { $or: [{ name: regex }, { description: regex }, { location: regex }, { region: regex }] } : {}
-      const countryQuery = combineFilters(countryFilter, countrySearch)
-      const entryQuery = combineFilters({ reviewStatus: 'published' }, contentScope, params.category ? { category: params.category } : {}, entrySearch)
-      const placeQuery = combineFilters({ reviewStatus: 'published' }, contentScope, placeSearch)
+      const countryQuery = combineFilters(countryFilter, matchingCountry.length ? exactCountrySearch : countrySearch)
+      const expandedContentScope = expandedCountryIds.length ? { country: { $in: expandedCountryIds } } : contentScope
+      const expandCountryResults = expandedCountryIds.length > 0
+      const entryQuery = combineFilters({ reviewStatus: 'published' }, expandedContentScope, params.category ? { category: params.category } : {}, expandCountryResults ? {} : entrySearch)
+      const placeQuery = combineFilters({ reviewStatus: 'published' }, expandedContentScope, expandCountryResults ? {} : placeSearch)
 
       const resultTypes = params.category ? ['cultural-entry'] : params.type ? [params.type] : TYPES
       const countsByType = {}

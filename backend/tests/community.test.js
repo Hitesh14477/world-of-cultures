@@ -209,8 +209,8 @@ async function withCommunityServer(run, { initialPosts = [], uploadImpl, removeI
     CommunityLikeModel,
     CommunityCommentModel,
     communityImageStorage: imageStorage,
-    userEnv: { USER_SESSION_SECRET: USER_SECRET, FRONTEND_ORIGIN: ORIGIN },
-    adminEnv,
+    userEnv: { NODE_ENV: 'test', USER_SESSION_SECRET: USER_SECRET, FRONTEND_ORIGIN: ORIGIN },
+    adminEnv: { NODE_ENV: 'test', ...adminEnv },
   })
   const server = app.listen(0, '127.0.0.1')
   await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject) })

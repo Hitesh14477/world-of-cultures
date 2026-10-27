@@ -273,6 +273,18 @@ export default function Home({ countries, loadState, errorMessage, onRetry }) {
 
   return <main>
     <WorldMap countries={countries} loadState={loadState} errorMessage={errorMessage} onRetry={onRetry} mapTopology={mapData.topology} mapStatus={mapData.status} />
+    {loadState === 'ready' && countries.length > 0 && <section className="home-continent-section" aria-labelledby="home-continents-title">
+      <div className="home-section-heading"><div><p className="eyebrow">Find your next destination</p><h2 id="home-continents-title">Explore by continent</h2></div><a href="/countries">Browse the directory <span aria-hidden="true">↗</span></a></div>
+      <div className="home-continent-grid">{CONTINENTS.map((continent) => {
+        const count = countries.filter((country) => country.continent === continent).length
+        const href = `/countries?continent=${encodeURIComponent(continent)}`
+        return <a className="home-continent-card" href={href} key={continent}>
+          <div className="home-continent-map-frame"><ContinentSilhouette continent={continent} countriesByCode={countriesByCode} worldFeatures={mapData.features} mapStatus={mapData.status} /></div>
+          <span className="home-continent-copy"><strong>{continent}</strong><small>{count} {count === 1 ? 'country' : 'countries'}</small></span><span className="home-continent-arrow" aria-hidden="true">↗</span>
+        </a>
+      })}</div>
+    </section>}
+
     {loadState === 'ready' && featuredCountries.length > 0 && <section className="home-country-section" aria-labelledby="home-countries-title">
       <div className="home-country-heading">
         <div><p className="eyebrow">Begin anywhere</p><h2 id="home-countries-title">A world of cultures</h2><p className="home-section-intro">Browse country profiles below, or choose any highlighted country above.</p></div>
@@ -293,18 +305,6 @@ export default function Home({ countries, loadState, errorMessage, onRetry }) {
           <span className="home-country-arrow" aria-hidden="true">↗</span>
         </a>)}
       </div>
-    </section>}
-
-    {loadState === 'ready' && countries.length > 0 && <section className="home-continent-section" aria-labelledby="home-continents-title">
-      <div className="home-section-heading"><div><p className="eyebrow">Find your next destination</p><h2 id="home-continents-title">Explore by continent</h2></div><a href="/countries">Browse the directory <span aria-hidden="true">↗</span></a></div>
-      <div className="home-continent-grid">{CONTINENTS.map((continent) => {
-        const count = countries.filter((country) => country.continent === continent).length
-        const href = `/countries?continent=${encodeURIComponent(continent)}`
-        return <a className="home-continent-card" href={href} key={continent}>
-          <div className="home-continent-map-frame"><ContinentSilhouette continent={continent} countriesByCode={countriesByCode} worldFeatures={mapData.features} mapStatus={mapData.status} /></div>
-          <span className="home-continent-copy"><strong>{continent}</strong><small>{count} {count === 1 ? 'country' : 'countries'}</small></span><span className="home-continent-arrow" aria-hidden="true">↗</span>
-        </a>
-      })}</div>
     </section>}
 
     {discovery.status === 'ready' && featuredStories.length > 0 && <section className="home-discover-section" aria-labelledby="home-discover-title">

@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
 
 const COOKIE_NAME = 'woc_admin_session'
@@ -66,12 +66,10 @@ function matchingOrigin(req, env) {
   return req.get('origin') === expected
 }
 
-export function createAdminAuth(env = process.env) {
+export function createAdminAuth(env = process.env, authStateStore) {
   const sessionSecret = typeof env.ADMIN_SESSION_SECRET === 'string' ? env.ADMIN_SESSION_SECRET : ''
   const adminUsername = typeof env.ADMIN_USERNAME === 'string' ? env.ADMIN_USERNAME.trim() : ''
   const passwordConfig = parsePasswordHash(env.ADMIN_PASSWORD_HASH)
-  const attemptsByAddress = new Map()
-  const activeSessions = new Map()
 
   function configurationReady() {
     return sessionSecret.length >= 32 && adminUsername.length > 0 && passwordConfig?.salt.length >= 16 && passwordConfig?.hash.length === 64
@@ -87,10 +85,13 @@ export function createAdminAuth(env = process.env) {
     res.setHeader('Set-Cookie', [cookie, legacyCookie])
   }
 
-  function requireAdmin(req, res, next) {
+  async function requireAdmin(req, res, next) {
     if (!configurationReady()) return respondUnavailable(res)
     const session = readSession(getCookie(req), sessionSecret)
-    if (!session || activeSessions.get(session.sid) !== session.exp) {
+    let activeSession
+    try { activeSession = session ? await authStateStore.getSession('admin', session.sid) : null }
+    catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
+    if (!session || activeSession?.exp !== session.exp) {
       return res.status(401).json({ success: false, message: 'Administrator authentication is required.' })
     }
     req.adminSession = session
@@ -113,14 +114,11 @@ export function createAdminAuth(env = process.env) {
       return res.status(403).json({ success: false, message: 'The request origin could not be verified.' })
     }
 
-    const now = Date.now()
-    const address = req.ip || req.socket.remoteAddress || 'unknown'
-    let attempts = attemptsByAddress.get(address)
-    if (attempts && now - attempts.startedAt >= FAILURE_WINDOW_MS) {
-      attemptsByAddress.delete(address)
-      attempts = null
-    }
-    if (attempts?.count >= MAX_FAILURES) {
+    const address = createHash('sha256').update(req.ip || req.socket.remoteAddress || 'unknown').digest('hex')
+    let attempts
+    try { attempts = await authStateStore.consumeLoginFailure('admin', address, FAILURE_WINDOW_MS) }
+    catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
+    if (attempts?.count > MAX_FAILURES) {
       return res.status(429).json({ success: false, message: 'Too many login attempts. Try again later.' })
     }
 
@@ -137,21 +135,20 @@ export function createAdminAuth(env = process.env) {
     }
     const valid = safeEqual(username, adminUsername) && timingSafeEqual(candidateHash, passwordConfig.hash)
     if (!valid) {
-      attemptsByAddress.set(address, { startedAt: attempts?.startedAt || now, count: (attempts?.count || 0) + 1 })
       return res.status(401).json({ success: false, message: 'The username or password is incorrect.' })
     }
 
-    attemptsByAddress.delete(address)
+    try { await authStateStore.clearLoginFailures('admin', address) }
+    catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
+    const now = Date.now()
     const session = {
       username: adminUsername,
       csrf: randomBytes(32).toString('base64url'),
       sid: randomBytes(32).toString('base64url'),
       exp: now + SESSION_SECONDS * 1000,
     }
-    for (const [sessionId, expiresAt] of activeSessions) {
-      if (expiresAt <= now) activeSessions.delete(sessionId)
-    }
-    activeSessions.set(session.sid, session.exp)
+    try { await authStateStore.setSession('admin', session.sid, { exp: session.exp }) }
+    catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
     issueCookie(res, session)
     return res.json({ success: true, data: { username: adminUsername, csrfToken: session.csrf } })
   }
@@ -160,8 +157,9 @@ export function createAdminAuth(env = process.env) {
     return res.json({ success: true, data: { username: req.adminSession.username, role: 'administrator', csrfToken: req.adminSession.csrf } })
   }
 
-  function logout(req, res) {
-    activeSessions.delete(req.adminSession.sid)
+  async function logout(req, res) {
+    try { await authStateStore.deleteSession('admin', req.adminSession.sid) }
+    catch { return res.status(503).json({ success: false, message: 'Administrator authentication is temporarily unavailable.' }) }
     const expiredCookie = cookieOptions(env, 0)
     const expiredLegacyCookie = `${COOKIE_NAME}=; Path=/api/admin; HttpOnly; SameSite=Strict; Max-Age=0${env.NODE_ENV === 'production' ? '; Secure' : ''}`
     res.setHeader('Set-Cookie', [expiredCookie, expiredLegacyCookie])

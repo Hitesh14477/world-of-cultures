@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { hashPassword, verifyPassword } from '../services/passwords.js'
 
 const COOKIE_NAME = 'woc_user_session'
@@ -94,10 +94,9 @@ function validateCredentials(body, { registration = false } = {}) {
   return { username, email, password }
 }
 
-export function createUserAuth({ UserModel, env = process.env }) {
+export function createUserAuth({ UserModel, env = process.env, authStateStore }) {
   const secret = typeof env.USER_SESSION_SECRET === 'string' ? env.USER_SESSION_SECRET : ''
-  const failedLogins = new Map()
-  const activeSessions = new Map()
+  const stateStore = authStateStore
 
   function configured(res) {
     if (secret.length >= 32 && !/replace-with|change-me|example-secret/i.test(secret)) return true
@@ -105,7 +104,11 @@ export function createUserAuth({ UserModel, env = process.env }) {
     return false
   }
 
-  function issueSession(res, user) {
+  function authUnavailable(res) {
+    return res.status(503).json({ success: false, message: 'Authentication is temporarily unavailable.' })
+  }
+
+  async function issueSession(res, user) {
     const now = Date.now()
     const session = {
       userId: String(user._id),
@@ -113,18 +116,18 @@ export function createUserAuth({ UserModel, env = process.env }) {
       sid: randomBytes(32).toString('base64url'),
       exp: now + SESSION_SECONDS * 1000,
     }
-    for (const [sessionId, activeSession] of activeSessions) {
-      if (activeSession.exp <= now) activeSessions.delete(sessionId)
-    }
-    activeSessions.set(session.sid, { userId: session.userId, exp: session.exp })
+    try { await stateStore.setSession('user', session.sid, { userId: session.userId, exp: session.exp }) }
+    catch { return null }
     setCookie(res, session, env)
     return { user: publicUser(user), csrfToken: session.csrf }
   }
 
-  function requireUser(req, res, next) {
+  async function requireUser(req, res, next) {
     if (!configured(res)) return undefined
     const session = decodeToken(cookieToken(req), secret)
-    const activeSession = session ? activeSessions.get(session.sid) : null
+    let activeSession
+    try { activeSession = session ? await stateStore.getSession('user', session.sid) : null }
+    catch { return authUnavailable(res) }
     if (!session || !activeSession || activeSession.exp !== session.exp || activeSession.userId !== session.userId) {
       return res.status(401).json({ success: false, message: 'Sign in to access this account.' })
     }
@@ -133,9 +136,11 @@ export function createUserAuth({ UserModel, env = process.env }) {
     return next()
   }
 
-  function optionalUser(req, _res, next) {
+  async function optionalUser(req, res, next) {
     const session = decodeToken(cookieToken(req), secret)
-    const activeSession = session ? activeSessions.get(session.sid) : null
+    let activeSession
+    try { activeSession = session ? await stateStore.getSession('user', session.sid) : null }
+    catch { return authUnavailable(res) }
     if (session && activeSession && activeSession.exp === session.exp && activeSession.userId === session.userId) {
       req.userSession = session
       req.user = { id: session.userId }
@@ -160,7 +165,9 @@ export function createUserAuth({ UserModel, env = process.env }) {
     try {
       const passwordHash = await hashPassword(credentials.password)
       const user = await UserModel.create({ username: credentials.username, email: credentials.email, passwordHash })
-      return res.status(201).json({ success: true, data: issueSession(res, user) })
+      const data = await issueSession(res, user)
+      if (!data) return authUnavailable(res)
+      return res.status(201).json({ success: true, data })
     } catch (error) {
       if (error?.code === 11000 || error?.name === 'ValidationError') {
         const duplicateUsername = error?.code === 11000 && (error.keyPattern?.username || error.keyValue?.username)
@@ -182,24 +189,22 @@ export function createUserAuth({ UserModel, env = process.env }) {
     if (credentials.message && credentials.message !== 'The email or password is incorrect.') {
       return res.status(400).json({ success: false, message: credentials.message })
     }
-    const address = req.ip || req.socket.remoteAddress || 'unknown'
-    const now = Date.now()
-    let failures = failedLogins.get(address)
-    if (failures && now - failures.startedAt >= FAILURE_WINDOW_MS) {
-      failedLogins.delete(address)
-      failures = null
-    }
-    if (failures?.count >= MAX_FAILURES) return res.status(429).json({ success: false, message: 'Too many sign-in attempts. Try again later.' })
+    const address = createHash('sha256').update(req.ip || req.socket.remoteAddress || 'unknown').digest('hex')
+    let failures
+    try { failures = await stateStore.consumeLoginFailure('user', address, FAILURE_WINDOW_MS) }
+    catch { return res.status(503).json({ success: false, message: 'Authentication is temporarily unavailable.' }) }
+    if (failures?.count > MAX_FAILURES) return res.status(429).json({ success: false, message: 'Too many sign-in attempts. Try again later.' })
 
     try {
       const user = await UserModel.findOne({ email: credentials.email }).select('+passwordHash').lean()
       const valid = await verifyPassword(credentials.password, user?.passwordHash)
       if (!user || !valid) {
-        failedLogins.set(address, { startedAt: failures?.startedAt || now, count: (failures?.count || 0) + 1 })
         return res.status(401).json({ success: false, message: 'The email or password is incorrect.' })
       }
-      failedLogins.delete(address)
-      return res.json({ success: true, data: issueSession(res, user) })
+      await stateStore.clearLoginFailures('user', address)
+      const data = await issueSession(res, user)
+      if (!data) return authUnavailable(res)
+      return res.json({ success: true, data })
     } catch (error) {
       return next(error)
     }
@@ -209,7 +214,8 @@ export function createUserAuth({ UserModel, env = process.env }) {
     try {
       const user = await UserModel.findById(req.user.id).select('_id username displayName avatarUrl email createdAt').lean()
       if (!user) {
-        activeSessions.delete(req.userSession.sid)
+        try { await stateStore.deleteSession('user', req.userSession.sid) }
+        catch { return authUnavailable(res) }
         setCookie(res, null, env, 0)
         return res.status(401).json({ success: false, message: 'Sign in to access this account.' })
       }
@@ -220,8 +226,9 @@ export function createUserAuth({ UserModel, env = process.env }) {
     }
   }
 
-  function logout(req, res) {
-    activeSessions.delete(req.userSession.sid)
+  async function logout(req, res) {
+    try { await stateStore.deleteSession('user', req.userSession.sid) }
+    catch { return authUnavailable(res) }
     setCookie(res, null, env, 0)
     return res.json({ success: true, message: 'You have been signed out.' })
   }

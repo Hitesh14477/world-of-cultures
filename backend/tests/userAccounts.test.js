@@ -166,7 +166,7 @@ function makeCommunityPosts(rows = []) {
   }
 }
 
-async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPosts = [], culturalEntryModel = null, imageStorage } = {}) {
+async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPosts = [], culturalEntryModel = null, imageStorage, userEnv = {} } = {}) {
   const UserModel = makeUsers()
   const UserFavouriteModel = makeFavourites()
   const CommunityPostModel = makeCommunityPosts(communityPosts)
@@ -181,8 +181,8 @@ async function withUserServer(run, { adminPasswordHash = ADMIN_HASH, communityPo
     UserFavouriteModel,
     CommunityPostModel,
     communityImageStorage: imageStorage,
-    userEnv: { USER_SESSION_SECRET: USER_SECRET, FRONTEND_ORIGIN: ORIGIN, NODE_ENV: 'test' },
-    adminEnv: { ADMIN_USERNAME: 'admin', ADMIN_SESSION_SECRET: 'admin-session-secret-for-isolation-tests', ADMIN_PASSWORD_HASH: adminPasswordHash, FRONTEND_ORIGIN: ORIGIN },
+    userEnv: { USER_SESSION_SECRET: USER_SECRET, FRONTEND_ORIGIN: ORIGIN, NODE_ENV: 'test', ...userEnv },
+    adminEnv: { NODE_ENV: 'test', ADMIN_USERNAME: 'admin', ADMIN_SESSION_SECRET: 'admin-session-secret-for-isolation-tests', ADMIN_PASSWORD_HASH: adminPasswordHash, FRONTEND_ORIGIN: ORIGIN },
   })
   const server = app.listen(0, '127.0.0.1')
   await new Promise((resolve, reject) => {
@@ -306,6 +306,13 @@ test('login succeeds, wrong credentials fail safely, current session omits hashe
     const afterLogout = await fetch(`${baseUrl}/api/users/session`, { headers: userHeaders(signedIn.cookie) })
     assert.equal(afterLogout.status, 401)
   })
+})
+
+test('production authentication cookies use Secure with the existing strict same-site policy', async () => {
+  await withUserServer(async (baseUrl) => {
+    const created = await register(baseUrl, 'secure_cookie@example.org', 'a strong password 123', 'secure_cookie')
+    assert.match(created.response.headers.get('set-cookie'), /; HttpOnly; SameSite=Strict; Max-Age=604800; Secure/)
+  }, { userEnv: { NODE_ENV: 'production' } })
 })
 
 test('regular-user and administrator logout revoke only their own sessions', async () => {

@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes, scryptSync } from 'node:crypto'
 import { createApp } from '../src/app.js'
+import { createMemoryAuthStateStore } from '../src/services/authStateStore.js'
 
 const ORIGIN = 'http://localhost:5173'
 const PASSWORD = 'correct horse battery staple'
@@ -65,7 +66,7 @@ function testEnv() {
   }
 }
 
-async function withServer({ entries, places, users = [], env = testEnv() }, run) {
+async function withServer({ entries, places, users = [], env = testEnv(), authStateStore }, run) {
   const notifications = []
   const server = createApp({
     CountryModel: {
@@ -86,7 +87,9 @@ async function withServer({ entries, places, users = [], env = testEnv() }, run)
       },
     },
     NotificationModel: { async create(document) { notifications.push(document); return document } },
+    userEnv: { NODE_ENV: 'test' },
     adminEnv: env,
+    authStateStore,
   }).listen(0, '127.0.0.1')
   await new Promise((resolve, reject) => {
     server.once('listening', resolve)
@@ -148,6 +151,14 @@ test('invalid administrator credentials are rejected without leaking authenticat
   })
 })
 
+test('production administrator cookies use Secure with the same-site policy', async () => {
+  await withServer({ entries: [], places: [], env: { ...testEnv(), NODE_ENV: 'production' } }, async (baseUrl) => {
+    const { response } = await login(baseUrl)
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('set-cookie'), /woc_admin_session=.*; Path=\/api; HttpOnly; SameSite=Strict; Max-Age=28800; Secure/)
+  })
+})
+
 test('login abuse protection limits repeated failures and authentication setup errors stay safe', async () => {
   await withServer({ entries: [], places: [] }, async (baseUrl) => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -165,6 +176,61 @@ test('login abuse protection limits repeated failures and authentication setup e
     })
     assert.equal(response.status, 503)
     assert.doesNotMatch(await response.text(), /password|hash|secret/i)
+  })
+})
+
+test('administrator login throttling is shared across API instances', async () => {
+  const authStateStore = createMemoryAuthStateStore()
+  await withServer({ entries: [], places: [], authStateStore }, async (firstInstanceUrl) => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      assert.equal((await login(firstInstanceUrl, { username: 'editor', password: 'incorrect' })).response.status, 401)
+    }
+  })
+  await withServer({ entries: [], places: [], authStateStore }, async (secondInstanceUrl) => {
+    const limited = await login(secondInstanceUrl, { username: 'editor', password: 'incorrect' })
+    assert.equal(limited.response.status, 429)
+  })
+})
+
+test('administrator sessions persist across API instances and logout revokes them everywhere', async () => {
+  const authStateStore = createMemoryAuthStateStore()
+  let cookie
+  let csrfToken
+  await withServer({ entries: [], places: [], authStateStore }, async (firstInstanceUrl) => {
+    const signedIn = await login(firstInstanceUrl)
+    assert.equal(signedIn.response.status, 200)
+    cookie = signedIn.cookie
+    csrfToken = signedIn.body.data.csrfToken
+  })
+  await withServer({ entries: [], places: [], authStateStore }, async (secondInstanceUrl) => {
+    const session = await fetch(`${secondInstanceUrl}/api/admin/session`, { headers: { Cookie: cookie } })
+    assert.equal(session.status, 200)
+    const logout = await fetch(`${secondInstanceUrl}/api/admin/logout`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, Cookie: cookie, 'X-CSRF-Token': csrfToken, 'Content-Type': 'application/json' },
+      body: '{}',
+    })
+    assert.equal(logout.status, 200)
+  })
+  await withServer({ entries: [], places: [], authStateStore }, async (thirdInstanceUrl) => {
+    const revoked = await fetch(`${thirdInstanceUrl}/api/admin/session`, { headers: { Cookie: cookie } })
+    assert.equal(revoked.status, 401)
+  })
+})
+
+test('administrator authentication fails closed when the shared store is unavailable', async () => {
+  const unavailableStore = {
+    async getSession() { throw new Error('simulated store outage') },
+    async setSession() { throw new Error('simulated store outage') },
+    async deleteSession() { throw new Error('simulated store outage') },
+    async consumeLoginFailure() { throw new Error('simulated store outage') },
+    async clearLoginFailures() { throw new Error('simulated store outage') },
+  }
+  await withServer({ entries: [], places: [], authStateStore: unavailableStore }, async (baseUrl) => {
+    const { response, body } = await login(baseUrl)
+    assert.equal(response.status, 503)
+    assert.match(body.message, /temporarily unavailable/i)
+    assert.equal(response.headers.get('set-cookie'), null)
   })
 })
 

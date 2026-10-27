@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Heart, MessageCircle } from 'lucide-react'
 import { addFavourite, createCommunityComment, createCommunityPost, deleteCommunityComment, deleteCommunityPost, fetchCommunityComments, fetchCommunityLikeStatus, fetchCommunityPost, fetchCommunityPosts, fetchFavouriteStatus, fetchMyProfile, fetchPublicMemberProfile, moderateCommunityPost, removeFavourite, setCommunityPostLiked, updateCommunityPost } from '../services/api.js'
 import { buildAuthPath } from '../services/authNavigation.js'
 import CountryFlag from '../components/CountryFlag.jsx'
@@ -18,6 +19,15 @@ const ACCEPTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 function explainError(error, fallback) {
   return error.response?.data?.message || error.message || fallback
+}
+
+function CommunityCountryFilter({ countries, countryFilter, onChange, disabled, className = '' }) {
+  return <label className={`community-filter community-top-filter ${className}`}>Filter by country
+    <select value={countryFilter} onChange={onChange} disabled={disabled}>
+      <option value="">All countries</option>
+      {countries.map((country) => <option value={country.slug} key={country.slug}>{country.name}</option>)}
+    </select>
+  </label>
 }
 
 function PostForm({ countries, post, csrfToken, onCancel, onSaved, onBusyChange }) {
@@ -166,6 +176,7 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
   const loginHref = buildAuthPath('login', returnTo)
   const saved = loggedIn && savedStatus?.userId === auth.user.id && Boolean(savedStatus.isSaved)
   const checkingSaved = loggedIn && savedStatus?.userId !== auth.user.id
+  const postTimestamp = <time dateTime={post.createdAt} title={post.createdAt ? new Date(post.createdAt).toLocaleString() : undefined}>{dateLabel}</time>
 
   useEffect(() => {
     if (!loggedIn) return undefined
@@ -195,15 +206,21 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
   }, [imageOpen])
 
   async function toggleLike() {
-    if (!loggedIn) return
+    if (!loggedIn || likeLoading) return
+    const previousLiked = liked
+    const previousLikes = likes
+    const next = !previousLiked
+    setLiked(next)
+    setLikes(Math.max(0, previousLikes + (next ? 1 : -1)))
     setLikeLoading(true)
     setInteractionError('')
     try {
-      const next = !liked
       await setCommunityPostLiked(post.id, next, auth.csrfToken)
-      setLiked(next)
-      setLikes((count) => Math.max(0, count + (next ? 1 : -1)))
-    } catch (error) { setInteractionError(explainError(error, 'Your like could not be saved. Please try again.')) }
+    } catch (error) {
+      setLiked(previousLiked)
+      setLikes(previousLikes)
+      setInteractionError(explainError(error, 'Your like could not be saved. Please try again.'))
+    }
     finally { setLikeLoading(false) }
   }
 
@@ -276,11 +293,10 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
           : post.author?.avatarUrl ? <img className="community-author-avatar" src={post.author.avatarUrl} alt="" /> : <span className="community-author-avatar community-author-initial" aria-hidden="true">C</span>}
         {post.author?.username
           ? <a className="community-author-link" href={`/members/${encodeURIComponent(post.author.username)}`}>
-            <span className="community-author">{post.author.displayName || post.author.username}</span><small>@{post.author.username}</small>
+            <span className="community-author">{post.author.displayName || post.author.username}</span><small>@{post.author.username}</small>{postTimestamp}
           </a>
-          : <span className="community-author">Community member</span>}
+          : <div className="community-author-link"><span className="community-author">Community member</span>{postTimestamp}</div>}
       </div>
-      <time dateTime={post.createdAt} title={post.createdAt ? new Date(post.createdAt).toLocaleString() : undefined}>{dateLabel}</time>
       <a href={`/countries/${encodeURIComponent(post.country?.slug || '')}`} className="community-country-label">
         {post.country?.flagEmoji && <span className="community-country-flag" aria-hidden="true">{post.country.flagEmoji}</span>} {post.country?.name || 'Country'}
       </a>
@@ -294,24 +310,37 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
     </button>
     <div className="community-post-copy">
       <p><strong className="community-caption-author">{post.author?.username || 'Community member'}</strong> {post.caption}</p>
-      {!commentsOpen && <button className="community-comments-preview-link" type="button" onClick={toggleComments}>{commentCount > 0 ? `View all ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}` : 'Be the first to comment'}</button>}
       <div className="community-interactions">
-        {loggedIn
-          ? <button type="button" className={`community-text-button ${liked ? 'community-liked' : ''}`} onClick={toggleLike} disabled={likeLoading} aria-pressed={liked}>{likeLoading ? 'Saving…' : liked ? '♥ Liked' : '♡ Like'} <span>{likes}</span></button>
-          : signedOut ? <a className="community-text-button" href={loginHref} aria-label="Sign in to like this post">♡ Like <span>{likes}</span></a>
-            : <span className="community-auth-wait" role="status">♡ Like <span>{likes}</span></span>}
-        <button type="button" className="community-text-button" onClick={toggleComments} aria-expanded={commentsOpen}>{commentsOpen ? 'Hide comments' : 'Comment'} <span>{commentCount}</span></button>
+        <div className="community-engagement-actions">
+          {loggedIn
+            ? <button type="button" className={`community-icon-action community-like-action ${liked ? 'community-liked' : ''}`} onClick={toggleLike} disabled={likeLoading} aria-label={`${likeLoading ? 'Saving like' : liked ? 'Unlike' : 'Like'} this post. ${likes} ${likes === 1 ? 'like' : 'likes'}.`} aria-pressed={liked} aria-busy={likeLoading}>
+              <Heart size={22} strokeWidth={2} fill={liked ? 'currentColor' : 'none'} aria-hidden="true" />
+            </button>
+            : signedOut ? <a className="community-icon-action community-like-action" href={loginHref} aria-label={`Sign in to like this post. ${likes} ${likes === 1 ? 'like' : 'likes'}.`}>
+              <Heart size={22} strokeWidth={2} aria-hidden="true" />
+            </a>
+              : <span className="community-icon-action community-like-action community-auth-wait" role="status" aria-label={`${likes} ${likes === 1 ? 'like' : 'likes'}`}>
+                <Heart size={22} strokeWidth={2} aria-hidden="true" />
+              </span>}
+          <button type="button" className="community-icon-action community-comment-action" onClick={toggleComments} aria-expanded={commentsOpen} aria-label={`${commentsOpen ? 'Hide' : 'Show'} comments. ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}.`}>
+            <MessageCircle size={21} strokeWidth={1.9} aria-hidden="true" /><span>{commentCount}</span>
+          </button>
+        </div>
+        <div className="community-secondary-actions">
         {loggedIn
           ? <button type="button" className={`community-text-button community-save-action ${saved ? 'community-saved' : ''}`} onClick={toggleSaved} disabled={saveBusy || checkingSaved} aria-pressed={saved}>{saveBusy ? 'Saving…' : checkingSaved ? 'Checking…' : saved ? '▣ Saved' : '▢ Save'}</button>
           : signedOut ? <a className="community-text-button community-save-action" href={loginHref}>▢ Save</a>
             : <span className="community-auth-wait community-save-action" role="status">▢ Save</span>}
         <button type="button" className="community-text-button community-share-action" onClick={sharePost}>Share</button>
+        </div>
       </div>
+      <p className="community-like-count">{likes} {likes === 1 ? 'like' : 'likes'}</p>
+      {!commentsOpen && <button className="community-comments-preview-link" type="button" onClick={toggleComments}>{commentCount > 0 ? `View all ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}` : 'Be the first to comment'}</button>}
       {shareMessage && <p className="community-share-message" role="status">{shareMessage}</p>}
       {interactionError && <p className="community-form-error" role="alert">{interactionError}</p>}
       {commentsOpen && <section className="community-comments" aria-label="Comments">
         {commentsLoading && <p role="status">Loading comments…</p>}
-        {!commentsLoading && comments.length === 0 && <p className="community-comment-empty">No comments yet.</p>}
+        {!commentsLoading && comments.length === 0 && <p className="community-comment-empty">No comments yet. Start the conversation!</p>}
         {comments.slice(0, showAllComments ? comments.length : 2).map((comment) => <article className="community-comment" key={comment.id}>
           <div className="community-comment-person">{comment.author?.avatarUrl ? <img src={comment.author.avatarUrl} alt="" /> : <span aria-hidden="true">{(comment.author?.username || 'C').slice(0, 1).toUpperCase()}</span>}<p>{comment.author?.username ? <a href={`/members/${encodeURIComponent(comment.author.username)}`}><strong>{comment.author.displayName || comment.author.username}</strong></a> : <strong>Community member</strong>} {comment.content}</p></div>
           {(auth?.user?.id === comment.author?.id || owner || isAdmin) && <button type="button" className="community-text-button community-danger-button" onClick={() => removeComment(comment)}>Remove</button>}
@@ -536,6 +565,9 @@ export default function CommunityPage({ auth, adminAuth, countries = [], loadSta
   }
 
   return <main className="community-page">
+    <div className="community-filter-row">
+      <CommunityCountryFilter countries={countries} countryFilter={countryFilter} onChange={changeCountry} disabled={loadState !== 'ready'} className="community-top-filter-responsive" />
+    </div>
     <div className="community-layout">
       <aside className="community-sidebar community-sidebar-left" aria-label="Your Community shortcuts">
         {auth?.status === 'ready' && auth.user
@@ -578,16 +610,6 @@ export default function CommunityPage({ auth, adminAuth, countries = [], loadSta
         </div>}
 
         {notice && <p className="community-notice" role="status">{notice}{deletingId && ' Removing…'}</p>}
-      <div className="community-feed-toolbar">
-        <div><h2>Latest posts</h2><span>{pagination.total} {pagination.total === 1 ? 'post' : 'posts'}</span></div>
-        <label className="community-filter">Filter by country
-          <select value={countryFilter} onChange={changeCountry} disabled={loadState !== 'ready'}>
-            <option value="">All countries</option>
-            {countries.map((country) => <option value={country.slug} key={country.slug}>{country.name}</option>)}
-          </select>
-        </label>
-      </div>
-
       {loadState === 'loading' && <p className="community-state" role="status">Loading countries…</p>}
       {loadState === 'error' && <div className="community-state" role="alert"><p>{errorMessage}</p><button className="community-text-button" type="button" onClick={onRetry}>Retry countries</button></div>}
       {feedState === 'loading' && <p className="community-state" role="status">Loading community posts…</p>}
@@ -600,10 +622,11 @@ export default function CommunityPage({ auth, adminAuth, countries = [], loadSta
       </section>
 
       <aside className="community-sidebar community-sidebar-right" aria-label="Explore Community">
+        <CommunityCountryFilter countries={countries} countryFilter={countryFilter} onChange={changeCountry} disabled={loadState !== 'ready'} />
         <section className="community-side-card"><header><h2>Explore countries</h2><a href="/countries">All countries</a></header>
           {loadState === 'loading' && <p className="community-side-muted">Loading country directory…</p>}
           {loadState === 'error' && <p className="community-side-muted">Country suggestions are unavailable.</p>}
-          {loadState === 'ready' && countries.slice(0, 4).map((country) => <a className="community-country-row" href={`/countries/${encodeURIComponent(country.slug)}`} key={country.slug}><CountryFlag country={country} className="community-mini-flag" /><span>{country.name}<small>{[country.region, country.continent].filter(Boolean).join(' · ')}</small></span><span aria-hidden="true">→</span></a>)}
+          {loadState === 'ready' && countries.slice(0, 4).map((country) => <a className="community-country-row" href={`/countries/${encodeURIComponent(country.slug)}`} key={country.slug}><CountryFlag country={country} className="community-mini-flag" /><span>{country.name}<small>{country.continent || country.region || ''}</small></span><span aria-hidden="true">→</span></a>)}
         </section>
         <section className="community-side-card"><header><h2>Recent posts</h2></header>
           {posts.slice(0, 3).map((post) => <a className="community-recent-row" href={`/community/posts/${encodeURIComponent(post.id)}`} key={post.id}><span>{post.author?.displayName || post.author?.username || 'Community member'}</span><small>{post.country?.name || 'Community'} · {relativeTime(post.createdAt)}</small><p>{post.caption}</p></a>)}

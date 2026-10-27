@@ -95,6 +95,36 @@ function fakePublicItems(rows) {
   };
 }
 
+test('credentialed CORS reflects only the configured frontend origin', async () => {
+  await withServer(fakeCountryModel(), async (baseUrl) => {
+    const allowed = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'http://localhost:5173' } })
+    assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:5173')
+    assert.equal(allowed.headers.get('access-control-allow-credentials'), 'true')
+
+    const denied = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'https://untrusted.example' } })
+    assert.equal(denied.headers.get('access-control-allow-origin'), null)
+  })
+})
+
+test('production startup requires an exact public HTTPS frontend origin', () => {
+  const oldNodeEnv = process.env.NODE_ENV
+  const oldFrontendOrigin = process.env.FRONTEND_ORIGIN
+  try {
+    process.env.NODE_ENV = 'production'
+    delete process.env.FRONTEND_ORIGIN
+    assert.throws(() => createApp(), /FRONTEND_ORIGIN must be configured in production/)
+    process.env.FRONTEND_ORIGIN = 'http://localhost:5173'
+    assert.throws(() => createApp(), /public HTTPS origin in production/)
+    process.env.FRONTEND_ORIGIN = 'https://cultures.example'
+    assert.doesNotThrow(() => createApp())
+  } finally {
+    if (oldNodeEnv === undefined) delete process.env.NODE_ENV
+    else process.env.NODE_ENV = oldNodeEnv
+    if (oldFrontendOrigin === undefined) delete process.env.FRONTEND_ORIGIN
+    else process.env.FRONTEND_ORIGIN = oldFrontendOrigin
+  }
+})
+
 test('search, continent filter, sorting, and pagination use the requested query', async () => {
   await withServer(fakeCountryModel(), async (baseUrl) => {
     const response = await fetch(`${baseUrl}/api/countries?search=land&continent=Europe&sort=-name&page=1&limit=1`);

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchNotifications, fetchUnreadNotificationCount, markNotificationRead } from '../services/api.js'
+import { Bell } from 'lucide-react'
+import { fetchNotifications, fetchUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from '../services/api.js'
 import { buildAuthPath } from '../services/authNavigation.js'
 
 function relativeTime(value) {
@@ -17,6 +18,7 @@ export default function NotificationBell({ user, csrfToken }) {
   const [items, setItems] = useState([])
   const [state, setState] = useState('idle')
   const [error, setError] = useState('')
+  const [markingRead, setMarkingRead] = useState(false)
   const root = useRef(null)
   const userId = user?.id
 
@@ -84,16 +86,32 @@ export default function NotificationBell({ user, csrfToken }) {
     window.location.assign(item.link)
   }
 
+  async function markAllRead() {
+    if (markingRead || count === 0) return
+    setMarkingRead(true)
+    setError('')
+    try {
+      await markAllNotificationsRead(csrfToken)
+      setItems((current) => current.map((item) => ({ ...item, isRead: true })))
+      setCount(0)
+      window.dispatchEvent(new Event('woc:notifications-changed'))
+    } catch {
+      setError('Notifications could not be marked as read. Please try again.')
+    } finally {
+      setMarkingRead(false)
+    }
+  }
+
   const loginPath = buildAuthPath('login', '/notifications')
   return <div className="notification-bell-wrap" ref={root}>
     {userId
       ? <button type="button" className="notification-bell" aria-label={`Notifications${count ? `, ${count} unread` : ''}`} aria-expanded={open} aria-controls="notification-dropdown" onClick={toggle}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+        <Bell size={19} strokeWidth={1.7} aria-hidden="true" />
         {count > 0 && <span className="notification-badge" aria-label={`${count} unread notifications`}>{count > 99 ? '99+' : count}</span>}
       </button>
-      : <a className="notification-bell" href={loginPath} aria-label="Sign in to view notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg></a>}
+      : <a className="notification-bell" href={loginPath} aria-label="Sign in to view notifications"><Bell size={19} strokeWidth={1.7} aria-hidden="true" /></a>}
     {open && <section className="notification-dropdown" id="notification-dropdown" aria-label="Recent notifications">
-      <header><h2>Notifications</h2>{count > 0 && <span>{count} unread</span>}</header>
+      <header><h2>Notifications</h2>{count > 0 && <div className="notification-dropdown-actions"><span>{count} unread</span><button type="button" onClick={markAllRead} disabled={markingRead}>{markingRead ? 'Updating…' : 'Mark as read'}</button></div>}</header>
       {state === 'loading' && <p role="status">Loading notifications…</p>}
       {state === 'error' && <p role="alert">{error}</p>}
       {state === 'ready' && items.length === 0 && <p>You’re all caught up. New activity will appear here.</p>}

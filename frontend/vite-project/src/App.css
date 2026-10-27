@@ -4,6 +4,8 @@
 .brand span { color: var(--forest); font-style: italic; font-size: .8em; }
 .site-header nav, .site-footer nav { display: flex; align-items: center; gap: clamp(20px, 3vw, 42px); }
 .site-header .site-nav-links { min-width: 0; justify-content: center; flex-wrap: wrap; gap: 9px clamp(12px, 1.6vw, 24px); }
+.site-header .site-nav-links .nav-icon-link, .site-account-actions .nav-icon-link { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.site-header .site-nav-links .nav-icon-link svg, .site-account-actions .nav-icon-link svg, .nav-account-button svg { flex: 0 0 auto; }
 .site-account-actions { min-width: 0; max-width: 100%; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px clamp(12px, 1.8vw, 24px); }
 .site-account-group { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 7px clamp(10px, 1.4vw, 18px); }
 .site-account-profile { min-width: 0; display: inline-flex; align-items: center; gap: 8px; }
@@ -13,6 +15,7 @@
 .nav-auth-loading { color: #77786f; font-size: 10px; white-space: nowrap; }
 .site-header nav a, .site-account-actions a, .site-footer nav a { color: var(--ink); font-size: 13px; text-decoration: none; transition: color .18s ease; }
 .site-header nav a:hover, .site-account-actions a:hover, .site-footer nav a:hover { color: var(--forest); }
+.site-header nav a:focus-visible, .site-account-actions a:focus-visible, .site-account-actions button:focus-visible { outline: 2px solid var(--forest); outline-offset: 4px; }
 .hero { padding: clamp(56px, 8vw, 102px) 0 clamp(40px, 6vw, 70px); }
 .eyebrow { margin: 0 0 15px; color: var(--forest); font-size: 11px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; }
 h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; letter-spacing: -.045em; }
@@ -180,10 +183,10 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .primary-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 .primary-button:disabled { opacity: .6; cursor: wait; }
 .community-feed-section { padding-top: 38px; }
-.community-feed-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 22px; }
-.community-feed-toolbar > div { display: flex; align-items: baseline; gap: 14px; }
-.community-feed-toolbar h2 { margin: 0; font-size: clamp(25px, 3vw, 34px); }
-.community-feed-toolbar > div > span, .community-filter, .community-field small { color: #77786f; font-size: 11px; }
+.community-filter-row { display: none; }
+.community-filter, .community-field small { color: #77786f; font-size: 11px; }
+.community-sidebar-right .community-top-filter { width: 100%; max-width: none; justify-self: stretch; }
+.community-top-filter select { min-width: 0; width: 100%; }
 .community-filter { display: grid; gap: 7px; }
 .community-filter select, .community-field input, .community-field textarea { width: 100%; padding: 11px 12px; color: var(--ink); background: #fbfaf6; border: 1px solid var(--line); border-radius: 0; font: inherit; font-size: 13px; }
 .community-filter select { min-width: 210px; }
@@ -275,7 +278,6 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 @media (max-width: 640px) {
   .community-page { padding-top: 42px; }
   .community-page-heading { align-items: flex-start; flex-direction: column; gap: 20px; }
-  .community-feed-toolbar { align-items: flex-start; flex-direction: column; }
   .community-filter, .community-filter select { width: 100%; }
   .community-feed-grid { grid-template-columns: minmax(0, 1fr); gap: 17px; }
   .community-post-form { padding: 16px; }
@@ -387,7 +389,7 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
   .global-search-pagination { justify-content: space-between; gap: 10px; }
 }
 
-.nav-account-button { padding: 0; color: var(--ink); background: transparent; border: 0; font: inherit; font-size: 13px; cursor: pointer; }
+.nav-account-button { padding: 0; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); background: transparent; border: 0; font: inherit; font-size: 13px; cursor: pointer; transition: color .18s ease; }
 .nav-account-button:hover { color: var(--forest); }
 .nav-account-button:disabled { color: #89897f; cursor: wait; }
 .nav-account-message { max-width: 100%; flex-basis: 100%; justify-self: end; margin: 0; display: flex; align-items: center; justify-content: flex-end; gap: 9px; color: #714b42; font-size: 10px; line-height: 1.5; text-align: right; }
@@ -653,7 +655,7 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 }
 
 /* Community social feed layout */
-.community-page { padding-top: clamp(24px, 3vw, 40px); }
+.community-page { padding-top: clamp(16px, 1.2vw, 24px); }
 .community-page-heading { align-items: center; padding-bottom: 24px; }
 .community-page-heading h1 { font-size: clamp(42px, 5.5vw, 64px); }
 .community-layout { display: grid; grid-template-columns: minmax(185px, .76fr) minmax(0, 1.55fr) minmax(205px, .84fr); align-items: start; gap: clamp(14px, 2vw, 26px); margin-top: 0; }
@@ -689,10 +691,6 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .community-composer > .primary-button { padding: 10px 12px; border-radius: 7px; font-size: 10px; white-space: nowrap; }
 .community-composer-signed-out { grid-template-columns: 38px minmax(0, 1fr) auto; color: var(--ink); text-decoration: none; }
 .community-composer-signed-out > strong { color: var(--forest); font-size: 10px; }
-.community-feed-toolbar { margin-bottom: 12px; align-items: center; }
-.community-feed-toolbar h2 { font-size: 24px; }
-.community-feed-toolbar > div { gap: 8px; }
-.community-feed-toolbar > div > span { font-size: 9px; }
 .community-filter { font-size: 11px; }
 .community-filter select { min-width: 165px; min-height: 38px; padding: 8px 10px; background: #fbfaf6; border: 1px solid var(--line); border-radius: 7px; font: inherit; font-size: 12px; }
 .community-feed-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
@@ -730,6 +728,41 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .community-side-card > header > a { color: var(--forest); font-size: 12px; text-decoration: none; white-space: nowrap; }
 .community-country-row { min-width: 0; padding: 13px 0; display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; color: var(--ink); border-top: 1px solid var(--line); text-decoration: none; }
 .community-mini-flag { width: 28px; height: 19px; object-fit: cover; border: 1px solid var(--line); }
+
+/* Instagram-style post actions: compact icons with clear keyboard affordances. */
+.community-interactions .community-icon-action {
+  min-width: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: #55584f;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+  transition: color 150ms ease, transform 150ms ease;
+}
+.community-interactions .community-icon-action:hover { color: var(--forest); transform: translateY(-1px); }
+.community-interactions .community-icon-action:focus-visible { outline: 2px solid var(--forest); outline-offset: 2px; }
+.community-interactions .community-icon-action:disabled { opacity: .65; cursor: wait; }
+.community-interactions .community-like-action.community-liked { color: #c84646; }
+.community-interactions .community-like-action.community-liked svg { animation: community-heart-pop 180ms ease-out; }
+.community-interactions .community-icon-action > span { margin: 0; color: inherit; font-size: 12px; }
+.community-post-copy p.community-like-count { margin: 2px 0 8px; color: var(--ink); font-size: 12px; font-weight: 600; line-height: 1.4; }
+@keyframes community-heart-pop {
+  0% { transform: scale(.82); }
+  65% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .community-interactions .community-icon-action { transition: none; }
+  .community-interactions .community-like-action.community-liked svg { animation: none; }
+}
 .community-mini-flag-emoji { font-size: 21px; }
 .community-country-row > span:nth-child(2) { min-width: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
 .community-country-row small { margin-top: 4px; display: block; color: #62645d; font-size: 11px; line-height: 1.45; }
@@ -750,10 +783,14 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .member-profile-total strong { color: var(--ink); font-family: var(--serif); font-size: 26px; font-weight: 400; }
 .member-profile-posts { margin-top: 27px; }
 .member-profile-posts > h2 { margin: 0 0 13px; font-size: 27px; }
-@media (max-width: 1120px) { .community-layout { grid-template-columns: minmax(180px, .8fr) minmax(0, 1.7fr); } .community-sidebar-right { display: none; } }
+@media (max-width: 1120px) {
+  .community-filter-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+  .community-layout { grid-template-columns: minmax(180px, .8fr) minmax(0, 1.7fr); }
+  .community-sidebar-right { display: none; }
+}
 @media (max-width: 760px) { .community-layout { grid-template-columns: minmax(0, 1fr); } .community-sidebar-left { display: none; } }
 @media (max-width: 640px) {
-  .community-page { padding-top: 22px; }
+  .community-page { padding-top: 16px; }
   .community-page-heading { padding-bottom: 18px; }
   .community-page-heading p:not(.eyebrow) { font-size: 12px; }
   .community-composer { grid-template-columns: 34px minmax(0, 1fr) auto; padding: 9px; gap: 7px; }
@@ -765,8 +802,8 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
   .community-composer-signed-out > strong { grid-column: 2; }
   .community-post-meta { padding: 10px; }
   .community-post-image { aspect-ratio: 1 / 1; }
-  .community-feed-toolbar { align-items: flex-start; }
-  .community-feed-toolbar > div { align-items: flex-start; flex-direction: column; }
+  .community-filter-row { margin-bottom: 8px; }
+  .community-filter-row .community-top-filter { width: 100%; max-width: none; }
   .community-filter select { min-width: 0; width: 100%; }
   .member-profile-header { grid-template-columns: 58px minmax(0, 1fr); padding: 19px 15px; gap: 13px; }
   .member-profile-header > img, .member-profile-header > span { width: 56px; height: 56px; font-size: 21px; }
@@ -971,6 +1008,11 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .notification-dropdown { position: absolute; z-index: 50; top: calc(100% + 10px); right: 0; width: min(360px, calc(100vw - 28px)); padding: 15px; color: var(--ink); background: #fbfaf6; border: 1px solid var(--line); box-shadow: 0 8px 28px rgb(36 39 34 / 10%); }
 .notification-dropdown > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 11px; border-bottom: 1px solid var(--line); }
 .notification-dropdown > header h2 { margin: 0; font-family: var(--serif); font-size: 22px; font-weight: 400; }
+.notification-dropdown-actions { display: flex; align-items: center; gap: 10px; }
+.notification-dropdown-actions button { padding: 4px 0; color: var(--forest); background: transparent; border: 0; border-bottom: 1px solid transparent; font: inherit; font-size: 11px; cursor: pointer; }
+.notification-dropdown-actions button:hover:not(:disabled) { border-bottom-color: currentColor; }
+.notification-dropdown-actions button:focus-visible { outline: 2px solid var(--forest); outline-offset: 3px; }
+.notification-dropdown-actions button:disabled { opacity: .6; cursor: wait; }
 .notification-dropdown > header span, .notification-dropdown > p { color: #77786f; font-size: 11px; line-height: 1.65; }
 .notification-dropdown > p { margin: 13px 0; }
 .notification-dropdown ul { max-height: 360px; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
@@ -1839,3 +1881,36 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; letter-spacing: -.035e
 .site-shell main :is(.admin-profile-tabs button, .admin-user-search button, .admin-user-pagination button, .admin-profile-signout button, .home-primary-action, .home-secondary-action, .home-section-heading > a, .home-country-heading > a) { font-weight: 500; }
 .site-shell .site-account-identity, .site-shell .nav-auth-loading { font-size: 13px; }
 .site-shell main :is(.home-primary-action, .home-secondary-action, .home-selected-country-action, .home-section-heading > a, .home-country-heading > a, .home-card-link, .directory-clear-selection, .collection-discover-button, .contribute-section-link, .detail-back-link, .admin-dashboard-link) { font-size: 14px; font-weight: 500; }
+
+/* Keep the Community sidebars quieter than the central feed. */
+.site-shell main .community-profile-card > nav a { font-weight: 400; }
+.site-shell main .community-profile-copy > span,
+.site-shell main .community-profile-copy > p,
+.site-shell main .community-country-row small,
+.site-shell main .community-recent-row small,
+.site-shell main .community-recent-row p { color: var(--muted-ink); font-weight: 400; }
+.site-shell main .community-country-row > span:nth-child(2) { font-weight: 400; }
+.site-shell main .community-recent-row > span { font-weight: 500; }
+
+/* Slightly reduce Community sidebar type while keeping the feed unchanged. */
+.community-profile-copy h2,
+.community-side-card > header h2 { font-size: 22px; }
+.community-profile-copy > span,
+.community-profile-copy > p { font-size: 13px; }
+.community-profile-copy > a,
+.community-profile-card > nav a { font-size: 14px; }
+.community-side-card > header > a { font-size: 12px; }
+.community-country-row > span:nth-child(2) { font-size: 14px; }
+.community-country-row small,
+.community-recent-row small { font-size: 11px; }
+.community-recent-row > span { font-size: 13px; }
+.community-recent-row p { font-size: 12px; }
+
+/* Post identity follows the photo; keep the timestamp under the member name. */
+.community-post-meta { row-gap: 8px; }
+.community-author-block { flex: 1 1 100%; }
+.community-author-link { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 7px; }
+.community-author-link time { margin: 0; color: #77786f; font-size: 11px; line-height: 1.35; white-space: nowrap; }
+.community-author-link time::before { content: '·'; margin-right: 7px; color: #99998f; }
+.community-post-meta > .community-country-label { margin-left: 0; }
+.community-post-meta > .community-action-menu { margin-left: auto; }

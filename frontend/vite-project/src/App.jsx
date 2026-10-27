@@ -1,24 +1,26 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import Navbar from './components/Navbar.jsx'
 import Footer from './components/Footer.jsx'
-import Home from './pages/Home.jsx'
-import ExploreCountries from './pages/ExploreCountries.jsx'
-import CountryDetail from './pages/CountryDetail.jsx'
-import CulturalEntryDetail from './pages/CulturalEntryDetail.jsx'
-import PlaceDetail from './pages/PlaceDetail.jsx'
-import ContributionPage from './pages/ContributionPage.jsx'
-import AdminPage from './pages/AdminPage.jsx'
-import SearchPage from './pages/SearchPage.jsx'
+const Home = lazy(() => import('./pages/Home.jsx'))
+const ExploreCountries = lazy(() => import('./pages/ExploreCountries.jsx'))
+const CountryDetail = lazy(() => import('./pages/CountryDetail.jsx'))
+const CulturalEntryDetail = lazy(() => import('./pages/CulturalEntryDetail.jsx'))
+const PlaceDetail = lazy(() => import('./pages/PlaceDetail.jsx'))
+const ContributionPage = lazy(() => import('./pages/ContributionPage.jsx'))
+const AdminPage = lazy(() => import('./pages/AdminPage.jsx'))
+const SearchPage = lazy(() => import('./pages/SearchPage.jsx'))
 import { adminLogout, fetchAdminSession, fetchCountries, fetchUserSession, logoutUser } from './services/api.js'
 import { resolveAppRoute } from './services/route.js'
-import UserAuthPage from './pages/UserAuthPage.jsx'
-import MyCollectionPage from './pages/MyCollectionPage.jsx'
-import CommunityPage, { CommunityPostDetailPage, MemberProfilePage } from './pages/CommunityPage.jsx'
-import AccountProfilePage from './pages/AccountProfilePage.jsx'
+const UserAuthPage = lazy(() => import('./pages/UserAuthPage.jsx'))
+const MyCollectionPage = lazy(() => import('./pages/MyCollectionPage.jsx'))
+const CommunityPage = lazy(() => import('./pages/CommunityPage.jsx'))
+const CommunityPostDetailPage = lazy(() => import('./pages/CommunityPage.jsx').then((module) => ({ default: module.CommunityPostDetailPage })))
+const MemberProfilePage = lazy(() => import('./pages/CommunityPage.jsx').then((module) => ({ default: module.MemberProfilePage })))
+const AccountProfilePage = lazy(() => import('./pages/AccountProfilePage.jsx'))
 import { buildAuthPath } from './services/authNavigation.js'
 import { buildAdminLoginPath } from './services/adminNavigation.js'
-import AdminProfilePage from './pages/AdminProfilePage.jsx'
-import NotificationsPage from './pages/NotificationsPage.jsx'
+const AdminProfilePage = lazy(() => import('./pages/AdminProfilePage.jsx'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage.jsx'))
 import './App.css'
 
 function useCountries(enabled = true) {
@@ -209,8 +211,9 @@ export default function App() {
     }
   }, [route.type, memberAuth.status, memberAuth.user])
 
-  return <div className="site-shell" id="home">
+  return <div className={`site-shell${route.type === 'community' ? ' community-shell' : ''}`} id="home">
     <Navbar userAuth={userAuth} adminAuth={adminAuth} />
+    <Suspense fallback={<main className="record-detail-page"><p role="status">Loading page…</p></main>}>
     {route.type === 'country' && <CountryDetail slug={route.slug} auth={memberAuth} />}
     {route.type === 'culturalEntry' && <CulturalEntryDetail slug={route.slug} entryId={route.entryId} auth={memberAuth} />}
     {route.type === 'place' && <PlaceDetail slug={route.slug} placeId={route.placeId} auth={memberAuth} />}
@@ -232,6 +235,7 @@ export default function App() {
     {route.type === 'adminProfile' && <AdminProfilePage auth={adminAuth} />}
     {route.type === 'home' && <Home {...countriesState} />}
     {route.type === 'notFound' && <main className="record-detail-page"><div className="detail-feedback" role="status"><h1>Page not found</h1><p>This address could not be opened.</p><a className="detail-back-link" href="/countries">Browse countries</a></div></main>}
+    </Suspense>
     <Footer auth={memberAuth} />
   </div>
 }
