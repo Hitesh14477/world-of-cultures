@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Heart, MessageCircle } from 'lucide-react'
+import { Bookmark, Check, Heart, MessageCircle, Share2 } from 'lucide-react'
 import { addFavourite, createCommunityComment, createCommunityPost, deleteCommunityComment, deleteCommunityPost, fetchCommunityComments, fetchCommunityLikeStatus, fetchCommunityPost, fetchCommunityPosts, fetchFavouriteStatus, fetchMyProfile, fetchPublicMemberProfile, moderateCommunityPost, removeFavourite, setCommunityPostLiked, updateCommunityPost } from '../services/api.js'
 import { buildAuthPath } from '../services/authNavigation.js'
 import CountryFlag from '../components/CountryFlag.jsx'
@@ -287,13 +287,13 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
     <div className="community-post-meta">
       <div className="community-author-block">
         {post.author?.username
-          ? <a className="community-avatar-link" href={`/members/${encodeURIComponent(post.author.username)}`} aria-label={`Open ${post.author.displayName || post.author.username}’s profile`}>
+          ? <a className="community-avatar-link" href={`/members/${encodeURIComponent(post.author.username)}`} aria-label={`Open ${post.author.username}’s profile`}>
             {post.author.avatarUrl ? <img className="community-author-avatar" src={post.author.avatarUrl} alt="" /> : <span className="community-author-avatar community-author-initial" aria-hidden="true">{(post.author.username || 'C').slice(0, 1).toUpperCase()}</span>}
           </a>
           : post.author?.avatarUrl ? <img className="community-author-avatar" src={post.author.avatarUrl} alt="" /> : <span className="community-author-avatar community-author-initial" aria-hidden="true">C</span>}
         {post.author?.username
           ? <a className="community-author-link" href={`/members/${encodeURIComponent(post.author.username)}`}>
-            <span className="community-author">{post.author.displayName || post.author.username}</span><small>@{post.author.username}</small>{postTimestamp}
+            <span className="community-author">{post.author.username}</span>{postTimestamp}
           </a>
           : <div className="community-author-link"><span className="community-author">Community member</span>{postTimestamp}</div>}
       </div>
@@ -327,11 +327,45 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
           </button>
         </div>
         <div className="community-secondary-actions">
-        {loggedIn
-          ? <button type="button" className={`community-text-button community-save-action ${saved ? 'community-saved' : ''}`} onClick={toggleSaved} disabled={saveBusy || checkingSaved} aria-pressed={saved}>{saveBusy ? 'Saving…' : checkingSaved ? 'Checking…' : saved ? '▣ Saved' : '▢ Save'}</button>
-          : signedOut ? <a className="community-text-button community-save-action" href={loginHref}>▢ Save</a>
-            : <span className="community-auth-wait community-save-action" role="status">▢ Save</span>}
-        <button type="button" className="community-text-button community-share-action" onClick={sharePost}>Share</button>
+          <button
+            type="button"
+            className={`community-icon-action community-share-action ${shareMessage ? 'community-shared' : ''}`}
+            onClick={sharePost}
+            aria-label={shareMessage ? 'Link copied to clipboard' : 'Share this post'}
+            title={shareMessage ? 'Link copied!' : 'Share post'}
+          >
+            {shareMessage ? <Check size={20} strokeWidth={2.2} aria-hidden="true" /> : <Share2 size={20} strokeWidth={1.9} aria-hidden="true" />}
+          </button>
+          {loggedIn
+            ? <button
+                type="button"
+                className={`community-icon-action community-save-action ${saved ? 'community-saved' : ''}`}
+                onClick={toggleSaved}
+                disabled={saveBusy || checkingSaved}
+                aria-pressed={saved}
+                aria-busy={saveBusy || checkingSaved}
+                aria-label={saveBusy ? 'Saving to collection…' : checkingSaved ? 'Checking saved status…' : saved ? 'Remove from saved collection' : 'Save post to collection'}
+                title={saved ? 'Remove from collection' : 'Save post'}
+              >
+                <Bookmark size={21} strokeWidth={1.9} fill={saved ? 'currentColor' : 'none'} aria-hidden="true" />
+              </button>
+            : signedOut
+              ? <a
+                  className="community-icon-action community-save-action"
+                  href={loginHref}
+                  aria-label="Sign in to save this post to your collection"
+                  title="Sign in to save"
+                >
+                  <Bookmark size={21} strokeWidth={1.9} aria-hidden="true" />
+                </a>
+              : <span
+                  className="community-icon-action community-save-action community-auth-wait"
+                  role="status"
+                  aria-label="Checking account status"
+                  title="Checking account status"
+                >
+                  <Bookmark size={21} strokeWidth={1.9} aria-hidden="true" />
+                </span>}
         </div>
       </div>
       <p className="community-like-count">{likes} {likes === 1 ? 'like' : 'likes'}</p>
@@ -342,7 +376,7 @@ export function CommunityPostCard({ post, owner, onEdit, onDelete, auth, adminAu
         {commentsLoading && <p role="status">Loading comments…</p>}
         {!commentsLoading && comments.length === 0 && <p className="community-comment-empty">No comments yet. Start the conversation!</p>}
         {comments.slice(0, showAllComments ? comments.length : 2).map((comment) => <article className="community-comment" key={comment.id}>
-          <div className="community-comment-person">{comment.author?.avatarUrl ? <img src={comment.author.avatarUrl} alt="" /> : <span aria-hidden="true">{(comment.author?.username || 'C').slice(0, 1).toUpperCase()}</span>}<p>{comment.author?.username ? <a href={`/members/${encodeURIComponent(comment.author.username)}`}><strong>{comment.author.displayName || comment.author.username}</strong></a> : <strong>Community member</strong>} {comment.content}</p></div>
+          <div className="community-comment-person">{comment.author?.avatarUrl ? <img src={comment.author.avatarUrl} alt="" /> : <span aria-hidden="true">{(comment.author?.username || 'C').slice(0, 1).toUpperCase()}</span>}<p>{comment.author?.username ? <a href={`/members/${encodeURIComponent(comment.author.username)}`}><strong>{comment.author.username}</strong></a> : <strong>Community member</strong>} {comment.content}</p></div>
           {(auth?.user?.id === comment.author?.id || owner || isAdmin) && <button type="button" className="community-text-button community-danger-button" onClick={() => removeComment(comment)}>Remove</button>}
         </article>)}
         {!commentsLoading && comments.length > 2 && <button type="button" className="community-text-button" onClick={() => setShowAllComments((value) => !value)}>{showAllComments ? 'Show fewer comments' : `View all ${comments.length} comments`}</button>}
@@ -413,8 +447,8 @@ export function MemberProfilePage({ username, auth, adminAuth }) {
     {state === 'error' && <section className="community-state" role="alert"><h1>Profile unavailable</h1><p>This community member could not be found.</p><button type="button" className="community-text-button" onClick={() => { setState('loading'); setRetry((value) => value + 1) }}>Try again</button></section>}
     {state === 'ready' && member && <>
       <header className="member-profile-header">
-        {member.user.avatarUrl ? <img src={member.user.avatarUrl} alt="" /> : <span aria-hidden="true">{(member.user.displayName || member.user.username || 'W').slice(0, 1).toUpperCase()}</span>}
-        <div><p className="eyebrow">Community member</p><h1>{member.user.displayName || member.user.username}</h1><p className="member-profile-username">@{member.user.username}</p>{member.user.bio && <p className="member-profile-bio">{member.user.bio}</p>}</div>
+        {member.user.avatarUrl ? <img src={member.user.avatarUrl} alt="" /> : <span aria-hidden="true">{(member.user.username || 'W').slice(0, 1).toUpperCase()}</span>}
+        <div><p className="eyebrow">Community member</p><h1>{member.user.username}</h1>{member.user.bio && <p className="member-profile-bio">{member.user.bio}</p>}</div>
         <div className="member-profile-total"><strong>{member.totalPosts}</strong><span>{member.totalPosts === 1 ? 'post' : 'posts'}</span></div>
       </header>
       <section className="member-profile-posts"><h2>Published posts</h2>{deleteError && <p className="community-form-error" role="alert">{deleteError}</p>}{member.posts.length === 0 ? <p className="community-empty">This member has not shared a post yet.</p> : <div className="community-feed-grid">{member.posts.map((post) => <CommunityPostCard key={post.id} post={post} auth={auth} adminAuth={adminAuth} owner={auth?.user?.id === post.author?.id} onEdit={() => { window.location.assign(`/community?edit=${encodeURIComponent(post.id)}`) }} onDelete={async (selectedPost, asAdmin) => {
@@ -574,7 +608,7 @@ export default function CommunityPage({ auth, adminAuth, countries = [], loadSta
           ? <section className="community-side-card community-profile-card">
             <div className="community-profile-cover" />
             <a className="community-profile-avatar" href="/profile" aria-label="Open your profile">{auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" /> : <span>{(auth.user.username || auth.user.email || 'W').slice(0, 1).toUpperCase()}</span>}</a>
-            <div className="community-profile-copy"><h2>{myProfileSummary?.userId === auth.user.id ? myProfileSummary.user.displayName || auth.user.username : auth.user.displayName || auth.user.username}</h2><span>@{auth.user.username || auth.user.email}</span>{myProfileSummary?.userId === auth.user.id && <p>{myProfileSummary.counts.communityPosts} community {myProfileSummary.counts.communityPosts === 1 ? 'post' : 'posts'}</p>}<a href="/profile">View profile →</a></div>
+            <div className="community-profile-copy"><h2>{auth.user.username}</h2>{myProfileSummary?.userId === auth.user.id && <p>{myProfileSummary.counts.communityPosts} community {myProfileSummary.counts.communityPosts === 1 ? 'post' : 'posts'}</p>}<a href="/profile">View profile →</a></div>
             <nav aria-label="Account shortcuts"><a href="/countries">Explore countries</a><a href="/my-collection">My Collection</a><a href="/profile#My%20Community%20Posts">My posts</a></nav>
           </section>
           : <section className="community-side-card community-signin-card"><p className="eyebrow">Join the conversation</p><h2>Your perspective belongs here.</h2><p>Sign in to share a photo, leave a comment, or save moments from the community.</p><a className="primary-button" href={buildAuthPath('login', '/community?compose=1')}>Sign in to contribute</a><a href="/register">Create an account</a></section>}
@@ -629,7 +663,7 @@ export default function CommunityPage({ auth, adminAuth, countries = [], loadSta
           {loadState === 'ready' && countries.slice(0, 4).map((country) => <a className="community-country-row" href={`/countries/${encodeURIComponent(country.slug)}`} key={country.slug}><CountryFlag country={country} className="community-mini-flag" /><span>{country.name}<small>{country.continent || country.region || ''}</small></span><span aria-hidden="true">→</span></a>)}
         </section>
         <section className="community-side-card"><header><h2>Recent posts</h2></header>
-          {posts.slice(0, 3).map((post) => <a className="community-recent-row" href={`/community/posts/${encodeURIComponent(post.id)}`} key={post.id}><span>{post.author?.displayName || post.author?.username || 'Community member'}</span><small>{post.country?.name || 'Community'} · {relativeTime(post.createdAt)}</small><p>{post.caption}</p></a>)}
+          {posts.slice(0, 3).map((post) => <a className="community-recent-row" href={`/community/posts/${encodeURIComponent(post.id)}`} key={post.id}><span>{post.author?.username || 'Community member'}</span><small>{post.country?.name || 'Community'} · {relativeTime(post.createdAt)}</small><p>{post.caption}</p></a>)}
           {feedState === 'empty' && <p className="community-side-muted">New discussions will appear here.</p>}
           <a className="community-side-explore-link" href="/countries">Explore cultures <span aria-hidden="true">→</span></a>
         </section>
