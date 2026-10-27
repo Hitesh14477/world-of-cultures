@@ -1042,7 +1042,8 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .member-profile-header > img, .member-profile-header > span { width: 88px; height: 88px; display: grid; place-items: center; color: var(--forest); background: #e9ede5; border: 1px solid var(--line); border-radius: 50%; object-fit: cover; font-family: var(--serif); font-size: 30px; }
 .member-profile-header .eyebrow { margin-bottom: 7px; font-size: 9px; }
 .member-profile-header h1 { margin: 0; font-size: clamp(30px, 4vw, 46px); }
-.member-profile-username, .member-profile-bio { margin: 4px 0 0; color: #77786f; font-size: 11px; line-height: 1.6; }
+.member-profile-username { margin: 4px 0 0; color: #62645d; font-size: 14px; font-weight: 500; line-height: 1.5; }
+.member-profile-bio { margin: 6px 0 0; color: #77786f; font-size: 13px; line-height: 1.6; }
 .member-profile-total { display: grid; justify-items: center; color: #77786f; font-size: 10px; }
 .member-profile-total strong { color: var(--ink); font-family: var(--serif); font-size: 26px; font-weight: 400; }
 .member-profile-posts { margin-top: 27px; }
@@ -1164,7 +1165,8 @@ h1, h2, h3 { color: var(--ink); font-family: var(--serif); font-weight: 400; let
 .profile-heading-copy { flex: 1; min-width: 0; }
 .profile-heading-copy .eyebrow { margin: 0 0 6px; }
 .profile-heading-copy h1 { margin: 0; font-family: var(--serif); font-size: clamp(34px, 5vw, 54px); font-weight: 400; }
-.profile-heading-copy > p:last-child { margin: 7px 0 0; color: #77786f; font-size: 12px; }
+.profile-heading-copy .profile-username { margin: 4px 0 0; color: #62645d; font-size: 15px; font-weight: 500; }
+.profile-heading-copy .profile-joined, .profile-heading-copy > p:last-child { margin: 6px 0 0; color: #77786f; font-size: 12px; }
 .profile-signout, .profile-tabs button, .profile-overview-columns header button, .profile-overview-posts header button { color: var(--forest); background: transparent; border: 0; font: inherit; cursor: pointer; }
 .profile-signout { padding: 9px 13px; border: 1px solid var(--line); font-size: 11px; }
 .profile-tabs { display: flex; flex-wrap: wrap; gap: 5px 24px; padding: 16px 0; border-bottom: 1px solid var(--line); }

@@ -447,8 +447,8 @@ export function MemberProfilePage({ username, auth, adminAuth }) {
     {state === 'error' && <section className="community-state" role="alert"><h1>Profile unavailable</h1><p>This community member could not be found.</p><button type="button" className="community-text-button" onClick={() => { setState('loading'); setRetry((value) => value + 1) }}>Try again</button></section>}
     {state === 'ready' && member && <>
       <header className="member-profile-header">
-        {member.user.avatarUrl ? <img src={member.user.avatarUrl} alt="" /> : <span aria-hidden="true">{(member.user.username || 'W').slice(0, 1).toUpperCase()}</span>}
-        <div><p className="eyebrow">Community member</p><h1>{member.user.username}</h1>{member.user.bio && <p className="member-profile-bio">{member.user.bio}</p>}</div>
+        {member.user.avatarUrl ? <img src={member.user.avatarUrl} alt="" /> : <span aria-hidden="true">{(member.user.displayName || member.user.username || 'W').slice(0, 1).toUpperCase()}</span>}
+        <div><p className="eyebrow">Community member</p><h1>{member.user.displayName || member.user.username}</h1><p className="member-profile-username">@{member.user.username}</p>{member.user.bio && <p className="member-profile-bio">{member.user.bio}</p>}</div>
         <div className="member-profile-total"><strong>{member.totalPosts}</strong><span>{member.totalPosts === 1 ? 'post' : 'posts'}</span></div>
       </header>
       <section className="member-profile-posts"><h2>Published posts</h2>{deleteError && <p className="community-form-error" role="alert">{deleteError}</p>}{member.posts.length === 0 ? <p className="community-empty">This member has not shared a post yet.</p> : <div className="community-feed-grid">{member.posts.map((post) => <CommunityPostCard key={post.id} post={post} auth={auth} adminAuth={adminAuth} owner={auth?.user?.id === post.author?.id} onEdit={() => { window.location.assign(`/community?edit=${encodeURIComponent(post.id)}`) }} onDelete={async (selectedPost, asAdmin) => {

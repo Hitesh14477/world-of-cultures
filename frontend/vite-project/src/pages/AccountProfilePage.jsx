@@ -266,7 +266,12 @@ export default function AccountProfilePage({ auth }) {
   return <main className="profile-page">
     <header className="profile-header">
       <div className="profile-avatar" aria-label={profile.avatarUrl ? `${profile.username || 'Your'} profile picture` : 'Default profile avatar'}>{profile.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : initials}</div>
-      <div className="profile-heading-copy"><p className="eyebrow">Your World of Cultures account</p><h1>@{profile.username || 'Account'}</h1>{profile.displayName && <p className="profile-display-name">{profile.displayName}</p>}<p>{profile.createdAt ? `Joined ${displayDate(profile.createdAt)}` : 'Account profile'}</p></div>
+      <div className="profile-heading-copy">
+        <p className="eyebrow">Your World of Cultures account</p>
+        <h1>{profile.displayName || profile.username || 'Account'}</h1>
+        {profile.username && <p className="profile-username">@{profile.username}</p>}
+        <p className="profile-joined">{profile.createdAt ? `Joined ${displayDate(profile.createdAt)}` : 'Account profile'}</p>
+      </div>
       <button className="profile-signout logout-control" type="button" onClick={auth.logout} disabled={auth.logoutBusy}>{auth.logoutBusy ? 'Logging out…' : 'Log out'}</button>
     </header>
     <nav className="profile-tabs" aria-label="Profile sections" role="tablist">{TABS.map((label) => <button key={label} type="button" role="tab" aria-selected={tab === label} onClick={() => setTab(label)}>{label}</button>)}</nav>
