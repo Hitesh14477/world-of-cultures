@@ -7,12 +7,19 @@
     "start": "node index.js",
     "dev": "node index.js",
     "import:countries": "node src/scripts/importCountries.js",
+    "import:cultural-pilot": "node src/scripts/importCulturalPilot.js",
+    "report:cultural-coverage": "node src/scripts/reportCulturalCoverage.js",
+    "admin:set-password": "node src/scripts/setAdminPassword.js",
     "test": "node --test"
   },
   "dependencies": {
+    "@google/genai": "^2.31.0",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "mongoose": "^9.0.0"
+    "file-type": "^22.2.0",
+    "mongoose": "^9.0.0",
+    "multer": "^2.5.0"
   }
 }

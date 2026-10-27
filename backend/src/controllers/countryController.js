@@ -1,4 +1,12 @@
 import Country, { CONTINENTS } from '../models/Country.js';
+import CulturalEntry from '../models/CulturalEntry.js';
+import Place from '../models/Place.js';
+import { communityImageStorage } from '../services/communityImageStorage.js';
+import {
+  ContributionValidationError,
+  validateCulturalEntrySubmission,
+  validatePlaceSubmission,
+} from '../validators/contributionValidation.js';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -57,7 +65,68 @@ function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function createCountryController(CountryModel = Country) {
+export function createCountryController(CountryModel = Country, CulturalEntryModel = CulturalEntry, PlaceModel = Place, { imageStorage = communityImageStorage } = {}) {
+  async function submitContribution(req, res, next, { Model, validate }) {
+    let uploadedImage;
+    try {
+      const country = await CountryModel.findOne({ slug: req.params.slug.toLowerCase() }).select('_id').lean();
+      if (!country) return res.status(404).json({ success: false, message: 'Country not found.' });
+
+      let fields;
+      try {
+        fields = validate(req.body, { hasImage: Boolean(req.file) });
+      } catch (error) {
+        if (!(error instanceof ContributionValidationError)) throw error;
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+          errors: error.fieldErrors,
+        });
+      }
+
+      if (req.file) {
+        const result = await imageStorage.upload(req.file.buffer, 'world-of-cultures/cultural-submissions');
+        uploadedImage = result;
+      }
+      let record;
+      try {
+        record = await Model.create({
+          ...fields,
+          ...(uploadedImage ? {
+            image: {
+              ...uploadedImage,
+              caption: req.body.imageCaption?.trim() || undefined,
+              rightsConfirmed: true,
+              rightsConfirmedAt: new Date(),
+            },
+          } : {}),
+          country: country._id,
+          submittedBy: req.user.id,
+          reviewStatus: 'pending_review',
+        });
+      } catch (error) {
+        if (uploadedImage?.publicId) {
+          try { await imageStorage.remove(uploadedImage.publicId); } catch { /* retain the database error; image cleanup can be retried operationally */ }
+        }
+        throw error;
+      }
+      return res.status(201).json({
+        success: true,
+        message: 'Thank you. Your contribution has been submitted for review.',
+        data: { id: String(record._id), reviewStatus: 'pending_review' },
+      });
+    } catch (error) {
+      if (error?.name === 'ValidationError') {
+        return res.status(400).json({
+          success: false,
+          message: 'Please correct the submission fields and try again.',
+          errors: Object.keys(error.errors || {}).map((field) => ({ field, message: 'This field is invalid.' })),
+        });
+      }
+      return next(error);
+    }
+  }
+
   return {
     async listCountries(req, res, next) {
       try {
@@ -114,7 +183,9 @@ export function createCountryController(CountryModel = Country) {
     async getCountryBySlug(req, res, next) {
       try {
         const slug = req.params.slug.toLowerCase();
-        const country = await CountryModel.findOne({ slug }).select('-_id -__v').lean();
+        // Legacy embedded culture has no review status, so it must not bypass
+        // the published-only CulturalEntry and Place APIs.
+        const country = await CountryModel.findOne({ slug }).select('-_id -__v -culture').lean();
         if (!country) {
           return res.status(404).json({ success: false, message: 'Country not found.' });
         }
@@ -122,6 +193,50 @@ export function createCountryController(CountryModel = Country) {
       } catch (error) {
         return next(error);
       }
+    },
+
+    async listCulturalEntries(req, res, next) {
+      try {
+        const country = await CountryModel.findOne({ slug: req.params.slug.toLowerCase() }).select('_id').lean();
+        if (!country) return res.status(404).json({ success: false, message: 'Country not found.' });
+
+        const entries = await CulturalEntryModel.find({ country: country._id, reviewStatus: 'published' })
+          .select('country category title summary content region sources facts imageAttributions image reviewStatus createdAt updatedAt')
+          .sort({ category: 1, title: 1 })
+          .lean();
+        return res.json({ success: true, data: entries });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    async listPlaces(req, res, next) {
+      try {
+        const country = await CountryModel.findOne({ slug: req.params.slug.toLowerCase() }).select('_id').lean();
+        if (!country) return res.status(404).json({ success: false, message: 'Country not found.' });
+
+        const places = await PlaceModel.find({ country: country._id, reviewStatus: 'published' })
+          .select('country name description location region coordinates category sources facts imageAttributions image reviewStatus createdAt updatedAt')
+          .sort({ name: 1 })
+          .lean();
+        return res.json({ success: true, data: places });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    submitCulturalEntry(req, res, next) {
+      return submitContribution(req, res, next, {
+        Model: CulturalEntryModel,
+        validate: validateCulturalEntrySubmission,
+      });
+    },
+
+    submitPlace(req, res, next) {
+      return submitContribution(req, res, next, {
+        Model: PlaceModel,
+        validate: validatePlaceSubmission,
+      });
     },
   };
 }

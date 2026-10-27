@@ -76,8 +76,7 @@ function WorldMap({ countries, loadState, errorMessage, onRetry }) {
             <CountryFlag country={selectedCountry} />
             <h3>{selectedCountry.name}</h3>
             <p className="selection-region">{[selectedCountry.continent, selectedCountry.capital?.[0]].filter(Boolean).join(' · ')}</p>
-            <button className="explore-culture" type="button" disabled title="Country detail pages are coming soon">Explore its culture <span aria-hidden="true">↗</span></button>
-            <p className="route-note">Country stories are coming soon.</p>
+            <a className="explore-culture" href={`/countries/${selectedCountry.slug}`}>Explore its culture <span aria-hidden="true">↗</span></a>
           </div>}
           {loadState === 'ready' && !selectedCountry && <div className="selection-empty"><span className="selection-label">Your selection</span><p>Choose a country to see its flag and begin your visit.</p></div>}
         </aside>
@@ -91,7 +90,7 @@ export default function Home({ countries, loadState, errorMessage, onRetry }) {
   return <main>
     <WorldMap countries={countries} loadState={loadState} errorMessage={errorMessage} onRetry={onRetry} />
     <section className="topics-section" id="topics" aria-labelledby="topics-title">
-      <div className="section-heading"><div><p className="eyebrow">A closer look</p><h2 id="topics-title">Explore cultural stories</h2></div></div>
+      <div className="section-heading"><div><p className="eyebrow">A closer look</p><h2 id="topics-title">Explore cultural topics</h2></div></div>
       <ul className="topics-list">{topics.map((topic, index) => <li key={topic}><span className="topic-index">0{index + 1}</span><span>{topic}</span></li>)}</ul>
     </section>
   </main>

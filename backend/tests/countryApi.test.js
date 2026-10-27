@@ -5,7 +5,7 @@ import { createApp } from '../src/app.js';
 const countries = [
   { name: 'Finland', officialName: 'Republic of Finland', slug: 'finland', cca2: 'FI', continent: 'Europe', _id: 'internal-1', __v: 0 },
   { name: 'Iceland', officialName: 'Republic of Iceland', slug: 'iceland', cca2: 'IS', continent: 'Europe', _id: 'internal-2', __v: 0 },
-  { name: 'Japan', officialName: 'Japan', slug: 'japan', cca2: 'JP', continent: 'Asia', _id: 'internal-3', __v: 0, culture: { history: [] } },
+  { name: 'Japan', officialName: 'Japan', slug: 'japan', cca2: 'JP', continent: 'Asia', _id: 'internal-3', __v: 0, culture: { history: [{ title: 'Unreviewed legacy history', content: 'Not approved for public display.' }] } },
 ];
 
 function matches(country, filter) {
@@ -50,10 +50,13 @@ function fakeCountryModel(rows = countries, { failCount = false } = {}) {
     findOne(filter) {
       const row = rows.find((country) => country.slug === filter.slug);
       return {
-        select() { return this; },
+        projection: '',
+        select(fields) { this.projection = fields; return this; },
         lean() {
           if (!row) return Promise.resolve(null);
+          if (this.projection === '_id') return Promise.resolve({ _id: row._id });
           const { _id, __v, ...publicFields } = row;
+          if (this.projection?.split(/\s+/).includes('-culture')) delete publicFields.culture;
           return Promise.resolve(publicFields);
         },
       };
@@ -61,8 +64,8 @@ function fakeCountryModel(rows = countries, { failCount = false } = {}) {
   };
 }
 
-async function withServer(countryModel, run) {
-  const server = createApp({ CountryModel: countryModel }).listen(0, '127.0.0.1');
+async function withServer(countryModel, run, extraModels = {}) {
+  const server = createApp({ CountryModel: countryModel, ...extraModels }).listen(0, '127.0.0.1');
   await new Promise((resolve, reject) => {
     server.once('listening', resolve);
     server.once('error', reject);
@@ -73,6 +76,23 @@ async function withServer(countryModel, run) {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+}
+
+function fakePublicItems(rows) {
+  return {
+    find(filter) {
+      let result = rows.filter((row) => row.country === filter.country && row.reviewStatus === filter.reviewStatus);
+      let projection = '';
+      return {
+        select(fields) { projection = fields; return this; },
+        sort() { return this; },
+        lean() {
+          const fields = projection.split(/\s+/).filter(Boolean);
+          return Promise.resolve(result.map((row) => Object.fromEntries(fields.filter((field) => field in row).map((field) => [field, row[field]]))));
+        },
+      };
+    },
+  };
 }
 
 test('search, continent filter, sorting, and pagination use the requested query', async () => {
@@ -104,11 +124,56 @@ test('country detail route returns a country and a missing slug returns 404', as
   await withServer(fakeCountryModel(), async (baseUrl) => {
     const found = await fetch(`${baseUrl}/api/countries/japan`);
     assert.equal(found.status, 200);
-    assert.equal((await found.json()).data.name, 'Japan');
+    const country = (await found.json()).data;
+    assert.equal(country.name, 'Japan');
+    assert.equal('culture' in country, false);
 
     const missing = await fetch(`${baseUrl}/api/countries/not-a-country`);
     assert.equal(missing.status, 404);
     assert.equal((await missing.json()).success, false);
+  });
+});
+
+test('country cultural endpoints return only published records with source metadata', async () => {
+  const entryModel = fakePublicItems([
+    { country: 'internal-3', category: 'history', title: 'Published history', reviewStatus: 'published', sourceKey: 'private:entry-key', rejectionReason: 'private moderation note', sources: [{ title: 'Source', url: 'https://example.org' }], facts: [{ propertyId: 'P571', propertyLabel: 'inception', value: '1500', references: [{ title: 'Reference', url: 'https://example.org/fact' }] }] },
+    { country: 'internal-3', category: 'history', title: 'Unreviewed draft', reviewStatus: 'pending_review', sources: [] },
+  ]);
+  const placeModel = fakePublicItems([
+    { country: 'internal-3', name: 'Published place', reviewStatus: 'published', category: 'landmark', sourceKey: 'private:place-key', rejectionReason: 'private moderation note', facts: [{ propertyId: 'P131', propertyLabel: 'located in', value: 'Agra', references: [{ title: 'Reference', url: 'https://example.org/place-fact' }] }] },
+    { country: 'internal-3', name: 'Unreviewed place', reviewStatus: 'draft', category: 'landmark' },
+  ]);
+
+  await withServer(fakeCountryModel(), async (baseUrl) => {
+    const entriesResponse = await fetch(`${baseUrl}/api/countries/japan/cultural-entries`);
+    const entries = await entriesResponse.json();
+    assert.equal(entriesResponse.status, 200);
+    assert.deepEqual(entries.data.map((entry) => entry.title), ['Published history']);
+    assert.equal(entries.data[0].sources[0].url, 'https://example.org');
+    assert.equal(entries.data[0].facts[0].propertyId, 'P571');
+    assert.equal('sourceKey' in entries.data[0], false);
+    assert.equal('rejectionReason' in entries.data[0], false);
+
+    const placesResponse = await fetch(`${baseUrl}/api/countries/japan/places`);
+    const places = await placesResponse.json();
+    assert.equal(placesResponse.status, 200);
+    assert.deepEqual(places.data.map((place) => place.name), ['Published place']);
+    assert.equal(places.data[0].facts[0].propertyId, 'P131');
+    assert.equal('sourceKey' in places.data[0], false);
+    assert.equal('rejectionReason' in places.data[0], false);
+
+    const missing = await fetch(`${baseUrl}/api/countries/no-such-country/places`);
+    assert.equal(missing.status, 404);
+  }, { CulturalEntryModel: entryModel, PlaceModel: placeModel });
+});
+
+test('unknown routes do not reflect query parameters in public error responses', async () => {
+  await withServer(fakeCountryModel(), async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/unknown-route?token=private-value`);
+    const body = await response.text();
+    assert.equal(response.status, 404);
+    assert.match(body, /Route not found/);
+    assert.doesNotMatch(body, /private-value|unknown-route/);
   });
 });
 

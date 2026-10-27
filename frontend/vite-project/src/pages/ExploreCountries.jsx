@@ -21,7 +21,6 @@ export default function ExploreCountries({ countries, loadState, errorMessage, o
   const [region, setRegion] = useState('')
   const [sort, setSort] = useState('name')
   const [page, setPage] = useState(1)
-  const [selectedKey, setSelectedKey] = useState('')
   const continents = useMemo(() => [...new Set(countries.map((country) => country.continent).filter(Boolean))].sort(), [countries])
   const regions = useMemo(() => [...new Set(countries.filter((country) => !continent || country.continent === continent).map(countryRegion).filter(Boolean))].sort(), [countries, continent])
   const filteredCountries = useMemo(() => {
@@ -36,8 +35,6 @@ export default function ExploreCountries({ countries, loadState, errorMessage, o
   const currentPage = Math.min(page, pageCount)
   const firstIndex = (currentPage - 1) * PAGE_SIZE
   const visibleCountries = filteredCountries.slice(firstIndex, firstIndex + PAGE_SIZE)
-  const selectedCountry = countries.find((country) => countryKey(country) === selectedKey)
-
   function clearFilters() {
     setSearch('')
     setContinent('')
@@ -59,24 +56,16 @@ export default function ExploreCountries({ countries, loadState, errorMessage, o
         <label className="directory-filter directory-sort"><span className="sr-only">Sort countries alphabetically</span><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1) }}><option value="name">A to Z</option><option value="-name">Z to A</option></select></label>
       </div>
 
-      {selectedCountry && <aside className="directory-selection" aria-live="polite">
-        <CountryFlag country={selectedCountry} />
-        <div><span className="selection-label">Selected country</span><h2>{selectedCountry.name}</h2></div>
-        <button className="explore-culture" type="button" disabled title="Country detail pages are coming soon">Explore its culture <span aria-hidden="true">↗</span></button>
-        <button className="directory-clear-selection" type="button" onClick={() => setSelectedKey('')}>Clear selection</button>
-        <p className="route-note">Country stories are coming soon.</p>
-      </aside>}
-
       <div className="directory-list-heading"><h2 id="directory-list-title">Countries</h2><span>{filteredCountries.length} {filteredCountries.length === 1 ? 'result' : 'results'}</span></div>
       {filteredCountries.length === 0 ? <div className="directory-feedback directory-no-results"><p>No countries match those filters.</p><button type="button" onClick={clearFilters}>Clear filters</button></div> : <>
         <ul className="directory-country-grid">{visibleCountries.map((country) => {
           const key = countryKey(country)
-          return <li key={key}><button className={`directory-country${selectedKey === key ? ' is-selected' : ''}`} type="button" aria-pressed={selectedKey === key} onClick={() => setSelectedKey(key)}>
+          return <li key={key}><a className="directory-country" href={`/countries/${country.slug}`} aria-label={`Explore ${country.name}`}>
             <span className="directory-card-top"><CountryFlag country={country} className="directory-flag" /><span className="directory-arrow" aria-hidden="true">↗</span></span>
             <span className="directory-country-name">{country.name}</span>
             <span className="directory-card-detail"><span>Capital</span><span>{country.capital?.length ? country.capital.join(', ') : '—'}</span></span>
             <span className="directory-card-detail"><span>Region</span><span>{countryRegion(country) || '—'}</span></span>
-          </button></li>
+          </a></li>
         })}</ul>
         <nav className="directory-pagination" aria-label="Country pages"><span>Showing {firstIndex + 1}–{Math.min(firstIndex + PAGE_SIZE, filteredCountries.length)} of {filteredCountries.length}</span><div>
           <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage === 1}>Previous</button><span>Page {currentPage} of {pageCount}</span><button type="button" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage === pageCount}>Next</button>

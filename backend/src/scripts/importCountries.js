@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 import mongoose from 'mongoose';
 import Country from '../models/Country.js';
 import { connectDatabase } from '../config/database.js';
+import { assertImportAllowed } from '../services/importPolicyGate.js';
+import { COUNTRY_DIRECTORY_IMPORT, IMPORT_POLICY_REGISTRY, REST_COUNTRIES_SOURCE_ID } from '../services/importPolicyRegistry.js';
 import {
   buildCountryImportPlan,
   normalizeSourceCountry,
@@ -45,7 +47,7 @@ async function readOfflineSource(filePath) {
   return sourceRecordsFromPayload(payload);
 }
 
-async function fetchRemoteSource(apiKey) {
+async function fetchRemoteSource(apiKey, fetchImpl = fetch) {
   if (!apiKey) {
     throw new Error('REST_COUNTRIES_API_KEY is required for the remote source. Add it locally to backend/.env, or use COUNTRIES_SOURCE_FILE for a complete saved response.');
   }
@@ -66,7 +68,7 @@ async function fetchRemoteSource(apiKey) {
 
     let response;
     try {
-      response = await fetch(url, {
+      response = await fetchImpl(url, {
         headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
         signal: AbortSignal.timeout(20000),
       });
@@ -121,14 +123,27 @@ export async function runCountryImport({
   sourcePath = process.env.COUNTRIES_SOURCE_FILE,
   apiKey = process.env.REST_COUNTRIES_API_KEY,
   CountryModel = Country,
+  policyRegistry = IMPORT_POLICY_REGISTRY,
+  fetchImpl = fetch,
+  connectDatabaseFn = connectDatabase,
+  policyNow = new Date(),
 } = {}) {
   const summary = { imported: 0, updated: 0, skipped: 0, failed: 0 };
   let connected = false;
 
   try {
+    assertImportAllowed({
+      sourceIds: [REST_COUNTRIES_SOURCE_ID],
+      operationId: COUNTRY_DIRECTORY_IMPORT,
+      use: 'country_facts_import',
+      storageMode: 'persistent_database',
+      registry: policyRegistry,
+      now: policyNow,
+    });
+
     const rawRecords = sourcePath
       ? await readOfflineSource(sourcePath)
-      : await fetchRemoteSource(apiKey);
+      : await fetchRemoteSource(apiKey, fetchImpl);
     const inScope = selectInScopeRecords(rawRecords);
     const normalized = [];
 
@@ -145,7 +160,7 @@ export async function runCountryImport({
       throw new Error(`Only ${normalized.length} of the 195 in-scope records were valid. No records were written.`);
     }
 
-    connected = await connectDatabase();
+    connected = await connectDatabaseFn();
     if (!connected) throw new Error('MongoDB connection failed; no country records were written.');
 
     const codes = normalized.map((country) => country.cca2);

@@ -1,0 +1,19 @@
+import { Router } from 'express'
+import { createAdminController } from '../controllers/adminController.js'
+import { createAdminAuth } from '../middleware/adminAuth.js'
+
+export function createAdminRouter({ CountryModel, CulturalEntryModel, PlaceModel, env = process.env, auth: providedAuth } = {}) {
+  const router = Router()
+  const auth = providedAuth || createAdminAuth(env)
+  const controller = createAdminController({ CountryModel, CulturalEntryModel, PlaceModel })
+
+  router.post('/login', auth.login)
+  router.post('/logout', auth.requireAdmin, auth.requireCsrf, auth.logout)
+  router.get('/session', auth.requireAdmin, auth.currentSession)
+  router.get('/pending', auth.requireAdmin, controller.listPending)
+  router.get('/submissions/:type/:id', auth.requireAdmin, controller.getSubmission)
+  router.post('/submissions/:type/:id/approve', auth.requireAdmin, auth.requireCsrf, controller.approveSubmission)
+  router.post('/submissions/:type/:id/reject', auth.requireAdmin, auth.requireCsrf, controller.rejectSubmission)
+
+  return router
+}
